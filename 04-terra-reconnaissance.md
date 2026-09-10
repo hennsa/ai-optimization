@@ -1,6 +1,6 @@
 # Terra High Reconnaissance
 
-This is the read-only reconnaissance result from the installed global Codex setup.
+This is the historical, read-only reconnaissance result from before the 2026-09-10 approved policy correction. It must not be read as the current installed state: direct verification during implementation confirmed the primary default remains Terra High, and the generic reasoning and verification role mappings below have since been corrected. See `02-current-global-design.md` for the current installed routing record.
 
 ## 1. Installed files inspected
 

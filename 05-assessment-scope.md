@@ -1,6 +1,6 @@
 # Assessment Scope Before Any Change
 
-No global configuration changes should be made until the following questions are answered.
+This is the historical assessment scope that led to the approved 2026-09-10 correction. Its questions have been answered and the approved policy has been implemented; retain it as decision evidence, not as a current prohibition on the completed change.
 
 ## Root-cause questions
 

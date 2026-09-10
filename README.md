@@ -19,11 +19,11 @@ This directory does not replace the installed global configuration. It documents
 ## Files
 
 - `01-goals-and-principles.md` - intended global behaviour and efficiency principles.
-- `02-current-global-design.md` - current installed routing design as reconstructed from the global configuration.
+- `02-current-global-design.md` - current installed routing design, including the approved routing correction.
 - `03-viv-real-world-evidence.md` - evidence from the VIV implementation run that exposed routing inefficiency.
 - `04-terra-reconnaissance.md` - read-only reconnaissance of the installed global configuration.
-- `05-assessment-scope.md` - questions the next assessment must answer before any changes are made.
-- `PROMPT-sol-high-assessment.md` - ready-to-use prompt for the next Codex assessment pass.
+- `05-assessment-scope.md` - historical assessment questions that led to the approved correction.
+- `PROMPT-sol-high-assessment.md` - historical ready-to-use assessment prompt.
 
 ## Important rule
 

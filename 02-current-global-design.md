@@ -1,6 +1,6 @@
 # Current Global Design
 
-This file records the installed design as reconstructed by a read-only Codex reconnaissance.
+This file records the installed design, directly re-verified during the approved policy correction on 2026-09-10.
 
 ## Installed global location
 
@@ -25,7 +25,7 @@ No project-specific routing files were present in the reconnaissance workspace.
 
 ## Global primary defaults
 
-The installed primary model defaults were reported as:
+The installed primary model defaults are:
 
 - model: Terra
 - reasoning effort: High
@@ -43,10 +43,11 @@ The installed global role taxonomy was reported as:
 | `implementation_light` | Terra | Low | Straightforward narrow implementation |
 | `implementation_standard` | Terra | Medium | Normal bounded production implementation |
 | `implementation_deep` | Terra | High | Difficult implementation |
-| `reasoning_light` | Sol | Low | Small bounded analysis |
-| `reasoning_standard` | Sol | Medium | Investigation, design, analysis, debugging |
-| `reasoning_deep` | Sol | High | Difficult architecture/investigation/cross-system reasoning |
-| `verifier_standard` | Sol | High | Independent substantive verification |
+| `reasoning_light` | Terra | Low | Ordinary bounded reasoning with clear acceptance criteria |
+| `reasoning_standard` | Terra | Medium | Normal bounded analysis, investigation, design, or debugging |
+| `reasoning_deep` | Sol | High | Premium escalation for genuinely difficult or high-risk ambiguity, architecture, concurrency, or cross-system reasoning |
+| `verifier_standard` | Terra | High | Normal substantive independent verification |
+| `verifier_deep` | Sol | High | High-risk or difficult independent verification |
 | `verifier_frontier` | Astra | High | Exceptional/high-consequence verification |
 
 There were no dedicated logical roles for:
@@ -64,13 +65,8 @@ Logical role names and task names were not treated as sufficient capability sele
 
 The documentation intentionally omitted default child model/effort values.
 
-## Important structural observation
+## Implemented routing correction
 
-The design contains a tension:
+The generic reasoning roles now start with Terra rather than directly coupling ordinary analysis to Sol. The policy also adds `verifier_deep` for difficult or high-risk independent verification, while retaining `reasoning_deep -> Sol High` as a premium escalation. `MULTI_AGENT.md` is the detailed canonical routing source; it now defines task-based starting routes, escalation and de-escalation, verification levels, same-model delegation justification, and compact reporting.
 
-- the orchestration policy says to choose the lowest-cost reliable capability;
-- generic reasoning roles are directly coupled to Sol.
-
-This means a task can be judged "light reasoning" and still route to Sol even if Luna Medium or Terra Medium could reliably satisfy the bounded acceptance criteria.
-
-That tension is the main subject of the current optimisation work.
+The intended and currently verified global primary default is Terra High (`gpt-5.6-terra` at `high`). Primary-model selection is independent of delegated child routing.

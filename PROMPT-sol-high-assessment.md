@@ -1,5 +1,7 @@
 # Prompt: Sol High Global Routing Assessment
 
+> Historical assessment prompt. The approved policy correction was implemented on 2026-09-10; do not use this prompt as the current installed-state description.
+
 Use **Sol High**.
 
 This is an assessment-only pass.
