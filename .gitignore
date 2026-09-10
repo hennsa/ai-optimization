@@ -1,0 +1,42 @@
+# IDE / editor
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary / logs
+*.tmp
+*.temp
+*.log
+*.bak
+~$*
+
+# Local environment / secrets
+.env
+.env.*
+*.secrets.*
+secrets/
+local/
+
+# Codex / machine-local runtime artifacts
+.codex/
+.session/
+sessions/
+history.jsonl
+session_index.jsonl
+
+# Build / generated output
+bin/
+obj/
+artifacts/
+out/
+
+# Archives
+*.zip
