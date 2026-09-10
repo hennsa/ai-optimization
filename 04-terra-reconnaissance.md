@@ -1,6 +1,6 @@
 # Terra High Reconnaissance
 
-This is the historical, read-only reconnaissance result from before the 2026-09-10 approved policy correction. It must not be read as the current installed state: direct verification during implementation confirmed the primary default remains Terra High, and the generic reasoning and verification role mappings below have since been corrected. See `02-current-global-design.md` for the current installed routing record.
+This is the historical, read-only reconnaissance result from before the 2026-09-10 approved policy correction. It must not be read as the current installed state: it recorded Terra High as the persisted primary selection at that time, and the generic reasoning and verification role mappings below have since been corrected. A later controlled experiment established that the persisted primary selection can change when the user selects another primary model or effort in Codex. See `02-current-global-design.md` for the current installed routing record.
 
 ## 1. Installed files inspected
 
@@ -156,6 +156,6 @@ A project-level override is not currently required because the intended policy i
 
 ## Reconnaissance conclusion
 
-The strongest current explanation is a policy-taxonomy problem rather than a Codex model-inheritance or default-model problem.
+The strongest historical explanation is a policy-taxonomy problem rather than evidence of Codex child-model inheritance or a child-routing default.
 
 Delegation: none

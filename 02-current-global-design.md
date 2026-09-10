@@ -23,12 +23,14 @@ Absent during reconnaissance:
 
 No project-specific routing files were present in the reconnaissance workspace.
 
-## Global primary defaults
+## Currently persisted primary selection
 
-The installed primary model defaults are:
+At the time this document was re-verified, the persisted primary selection was:
 
 - model: Terra
 - reasoning effort: High
+
+The top-level `model` and `model_reasoning_effort` values in `config.toml` represent the currently persisted primary selection. They can change when a user selects another primary model or reasoning effort in Codex; they are not fixed global routing defaults or child model/effort defaults.
 
 The `[agents]` section enabled agents and configured concurrency, but did not define child model/effort defaults.
 
@@ -69,4 +71,4 @@ The documentation intentionally omitted default child model/effort values.
 
 The generic reasoning roles now start with Terra rather than directly coupling ordinary analysis to Sol. The policy also adds `verifier_deep` for difficult or high-risk independent verification, while retaining `reasoning_deep -> Sol High` as a premium escalation. `MULTI_AGENT.md` is the detailed canonical routing source; it now defines task-based starting routes, escalation and de-escalation, verification levels, same-model delegation justification, and compact reporting.
 
-The intended and currently verified global primary default is Terra High (`gpt-5.6-terra` at `high`). Primary-model selection is independent of delegated child routing.
+The selection recorded during this verification was Terra High (`gpt-5.6-terra` at `high`). Primary-model selection is independent of delegated child routing and must not be used as evidence that delegated children inherit the master's model family.
