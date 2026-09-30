@@ -16,6 +16,10 @@ The master may delegate both downward and upward.
 
 The master model must not determine the model family used for delegated tasks.
 
+## Primary-model lifecycle
+
+Choose the least expensive primary model and reasoning effort that can reliably perform the current task, based on its actual depth, ambiguity, risk, verification needs, and expected work. Escalate when observed complexity warrants it rather than pre-paying for hypothetical difficulty. When the difficult portion is complete and the remaining work is cheaper or bounded, reassess and de-escalate the primary where appropriate. A difficult prior task is not, by itself, a reason to retain an expensive primary. Keep model cost optimization from handing routine work back to the human when an appropriately capable, lower-cost Codex route can safely complete it. Primary selection is separate from persisted/default selection and from child routing.
+
 ## Cheapest reliable route
 
 For every delegated subtask, deliberately choose the lowest-cost model and reasoning level that can reliably satisfy its explicit bounded acceptance criteria.
