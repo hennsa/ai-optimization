@@ -24,6 +24,7 @@ This directory does not replace the installed global configuration. It documents
 - `04-terra-reconnaissance.md` - read-only reconnaissance of the installed global configuration.
 - `05-assessment-scope.md` - historical assessment questions that led to the approved correction.
 - `experiments/primary-model-persistence.md` - controlled evidence about persisted primary-model selection.
+- `experiments/primary-runtime-reporting.md` - per-turn VIV runtime evidence and the primary-model self-reporting discrepancy.
 - `PROMPT-sol-high-assessment.md` - historical ready-to-use assessment prompt.
 
 ## Important rule
