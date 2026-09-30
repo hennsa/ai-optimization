@@ -57,3 +57,7 @@ Quota consumption is not model-identification evidence. Report a primary model a
 Before this migration, the operational matrix used GPT-5.6 Luna Low/Medium, GPT-5.6 Terra Low/Medium/High, and GPT-5.6 Sol High routes; the two frontier roles already used GPT-6 Astra High. That matrix is superseded by the active GPT-6 matrix above. The earlier dated reconnaissance and primary-model experiments remain historical records in `04-terra-reconnaissance.md` and `experiments/primary-model-persistence.md`; they were not cosmetically rewritten.
 
 The persisted primary selection is independent of child routing. The top-level `model` and `model_reasoning_effort` values can change when the user selects another primary model and do not act as child defaults.
+
+## Routing application lesson (2026-09-30)
+
+The read-only reconstruction audit used Luna High children for two bounded evidence searches from a Luna Medium primary. Retrospective assessment found those targeted repository-history and rollout searches fit the existing Luna Medium route. This was avoidable over-routing in applying the policy, not a routing-matrix defect; the matrix was not changed. Continue to reassess capability against each bounded task rather than carrying a higher route by default.

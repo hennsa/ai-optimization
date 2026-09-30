@@ -1,6 +1,6 @@
 # AI Optimisation - Codex Context Pack
 
-This directory is a durable context pack for refining the global Codex multi-agent/model-routing setup.
+This directory is a durable context pack for refining the global Codex multi-agent/model-routing setup and maintaining the authored Codex assets used by that workflow.
 
 The goal is to improve cost and usage efficiency without reducing implementation quality.
 
@@ -23,6 +23,9 @@ This directory does not replace the installed global configuration. It documents
 - `03-viv-real-world-evidence.md` - evidence from the VIV implementation run that exposed routing inefficiency.
 - `04-terra-reconnaissance.md` - read-only reconnaissance of the installed global configuration.
 - `05-assessment-scope.md` - historical assessment questions that led to the approved correction.
+- `06-work-item-and-artifact-workflow.md` - the established work-item protocol and artifact-policy design, kept separate from model routing and repository governance.
+- `codex/README.md` - canonical authored Codex assets and their relationship to active installations.
+- `codex/skills/workspace-onboarding/SKILL.md` - canonical source for the reconstructed workspace-onboarding skill.
 - `experiments/primary-model-persistence.md` - controlled evidence about persisted primary-model selection.
 - `experiments/primary-runtime-reporting.md` - per-turn VIV runtime evidence and the primary-model self-reporting discrepancy.
 - `PROMPT-sol-high-assessment.md` - historical ready-to-use assessment prompt.
@@ -41,3 +44,7 @@ The required sequence is:
 6. record the final routing policy and evidence.
 
 The policy must remain global and reusable across unrelated repositories.
+
+## Authored Codex assets
+
+Authored, reusable Codex assets maintained by this project have canonical source copies under `codex/`. The active Codex installation remains under the user's Codex home. See [`codex/README.md`](codex/README.md) for the asset inventory and safe manual installation procedure. Runtime state, machine-specific configuration, and bundled or plugin-provided assets are not source-controlled here.
