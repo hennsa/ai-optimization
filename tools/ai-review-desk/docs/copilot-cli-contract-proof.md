@@ -6,7 +6,7 @@ Establish whether Copilot CLI can support the AI Review Desk read-only reviewer 
 
 ## Phase 1 result
 
-The Phase 1 run ended **NO-GO for Phase 2 readiness and WPF implementation** because the isolated CLI had no authentication and did not reach model/tool execution. The detailed evidence and documented/observed/unresolved distinction are in [the Phase 1 proof report](phase1-copilot-cli-contract-proof.md). Repeat the unresolved probes with isolated authentication before advancing.
+The current Phase 1 result is **NO-GO because a core reviewer boundary cannot be established**: Copilot CLI 1.0.91 did not resolve the manually provisioned OAuth credential under the fresh isolated `COPILOT_HOME`, so it did not reach model/tool execution. This is an authentication/configuration integration blocker, not an observed reviewer bypass. The detailed evidence and documented/observed/unresolved distinction are in [the Phase 1 proof report](phase1-copilot-cli-contract-proof.md). Resolve authentication without weakening isolation, then repeat the blocked probes before advancing.
 
 ## Proposed contract to prove
 
@@ -45,7 +45,7 @@ Additional checks should record the supported CLI version/model reporting, non-i
 
 The contract is **proven for implementation** only when all of the following hold for the selected CLI version and supported invocation:
 
-1. The reviewed repository is readable from outside the process working directory.
+1. The reviewed repository is readable from outside the process working directory, and the supported OAuth credential works with the isolated configuration.
 2. Effective capabilities expose only the intended read/search operations; shell, write, patch, arbitrary MCP, and subagent paths are unavailable.
 3. Repository instruction and extension discovery can be disabled or otherwise shown not to widen authority; if not, an explicitly reviewed compensating design is required before proceeding.
 4. Adversarial write/command requests cannot mutate the fixture or execute commands.

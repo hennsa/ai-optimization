@@ -7,8 +7,8 @@ Define a small, reviewable v0.1 product design and delivery plan for AI Review D
 ## Current state
 
 - Phase 0 (design) is complete.
-- Phase 1 has a small executable harness and a written evidence record, but the contract was not established because the isolated CLI could not authenticate in this environment.
-- Phase 1 recommendation: **NO-GO for Phase 2 readiness or WPF implementation pending an authenticated synthetic-fixture rerun.** This is an evidence gap, not an observed bypass.
+- Phase 1 has a small executable harness and a written evidence record. Copilot CLI 1.0.91 did not resolve the manually provisioned OAuth credential with a fresh isolated `COPILOT_HOME`, so authenticated model/tool probes could not run.
+- Phase 1 recommendation: **NO-GO because a core reviewer boundary cannot be established.** The auth/configuration incompatibility blocks proof of the read-only boundary; no bypass was observed because model/tool execution was not reached.
 - No WPF product implementation or global Codex configuration change has started.
 
 ## Accepted direction
@@ -30,7 +30,7 @@ Define a small, reviewable v0.1 product design and delivery plan for AI Review D
 
 ## Open gate
 
-Do not begin WPF product implementation. First repeat the Phase 1 model/tool/security probes with an explicitly provisioned isolated Copilot authentication method and establish the experimental Windows sandbox policy, then obtain independent Phase 2 verification. Unknown Copilot CLI behavior remains unknown until experimentally established.
+Do not begin WPF product implementation or Phase 2. First resolve the supported Windows OAuth credential lookup while retaining the isolated CLI configuration; no PAT or copied token should be introduced as a shortcut. Then complete the blocked authenticated Phase 1 model/tool/security probes and obtain independent Phase 2 verification. Unknown Copilot CLI behavior remains unknown until experimentally established. The experimental Windows sandbox is not an assumed part of the v0.1 contract.
 
 ## Artifact and repository state
 

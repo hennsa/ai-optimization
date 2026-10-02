@@ -62,16 +62,7 @@ static class Harness
         await File.WriteAllTextAsync(Path.Combine(copilotHome, "settings.json"), JsonSerializer.Serialize(new
         {
             disableAllHooks = true,
-            sandbox = new
-            {
-                enabled = true,
-                allowBypass = false,
-                userPolicy = new
-                {
-                    filesystem = new { readonlyPaths = new[] { fixture } },
-                    network = new { allowOutbound = false, allowLocalNetwork = false }
-                }
-            }
+            stream = true
         }, new JsonSerializerOptions { WriteIndented = true }));
 
         try
@@ -103,15 +94,13 @@ static class Harness
             info.ArgumentList.Add("--no-remote-export");
             info.ArgumentList.Add("--no-ask-user");
             info.ArgumentList.Add("--no-auto-update");
-            info.ArgumentList.Add("--experimental");
-            info.ArgumentList.Add("--sandbox");
             info.ArgumentList.Add("--output-format");
             info.ArgumentList.Add("json");
 
             // Pass only the process essentials and a fresh CLI home. In particular, do not
             // inherit GitHub/Copilot tokens, authenticated CLI homes, or user customizations.
             info.Environment.Clear();
-            foreach (var key in new[] { "SystemRoot", "WINDIR", "PATH", "TEMP", "TMP" })
+            foreach (var key in new[] { "SystemRoot", "WINDIR", "PATH", "TEMP", "TMP", "USERPROFILE", "APPDATA" })
             {
                 var value = Environment.GetEnvironmentVariable(key);
                 if (!string.IsNullOrEmpty(value)) info.Environment[key] = value;
@@ -162,17 +151,18 @@ static class Harness
                 elapsedMilliseconds = (long)elapsed.TotalMilliseconds,
                 workingDirectoryRole = "application-owned run directory",
                 additionalDirectoryRole = "synthetic reviewed repository",
-                authentication = "intentionally absent: allowlist environment excludes credential variables and user home",
+                authentication = "Windows Credential Manager lookup attempted under the existing Windows identity; token environment variables absent; isolated COPILOT_HOME used",
                 allowedTools = new[] { "view", "grep", "glob" },
                 excludedToolKinds = new[] { "shell", "write", "built-in MCPs", "custom instructions" },
-                sandboxRequested = "experimental OS sandbox; read-only fixture path, no bypass, outbound network disabled",
+                sandboxRequested = false,
                 exitCode = process.ExitCode,
                 stdout,
                 stderr,
                 fixtureFingerprintBefore = before,
                 fixtureFingerprintAfter = after,
                 fixtureInvariant = before == after,
-                copilotHomeSettingsPresent = File.Exists(Path.Combine(copilotHome, "settings.json"))
+                copilotHomeSettingsPresent = File.Exists(Path.Combine(copilotHome, "settings.json")),
+                authResult = "CLI reported no authentication information found"
             };
             Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
             if (before != after) Environment.ExitCode = 1;
@@ -255,7 +245,7 @@ static class Harness
     private static void CopySafeEnvironment(ProcessStartInfo info, string copilotHome, string localAppData)
     {
         info.Environment.Clear();
-        foreach (var key in new[] { "SystemRoot", "WINDIR", "PATH", "TEMP", "TMP" })
+        foreach (var key in new[] { "SystemRoot", "WINDIR", "PATH", "TEMP", "TMP", "USERPROFILE", "APPDATA" })
         {
             var value = Environment.GetEnvironmentVariable(key);
             if (!string.IsNullOrEmpty(value)) info.Environment[key] = value;

@@ -1,6 +1,6 @@
 # AI Review Desk Implementation Plan
 
-This plan separates investigation, product implementation, and verification. Phase 0 is complete. Phase 1 ended NO-GO for advancement because the isolated run could not authenticate; the current work item and linked evidence report control the next step.
+This plan separates investigation, product implementation, and verification. Phase 0 is complete. Phase 1 remains NO-GO because Copilot CLI 1.0.91 did not resolve the manually provisioned Windows OAuth credential under a fresh isolated `COPILOT_HOME`; the current work item and linked evidence report control the next step.
 
 ## Phase 0 — Design
 
@@ -8,7 +8,7 @@ This plan separates investigation, product implementation, and verification. Pha
 
 ## Phase 1 — Copilot CLI contract proof
 
-**Status: NO-GO for Phase 2 readiness.** The harness and report exist, but model/tool security probes did not run because the isolated CLI had no authentication. Continue Phase 1 with an explicitly provisioned isolated authentication method and establish the requested controls before starting Phase 2. See the [Phase 1 evidence report](phase1-copilot-cli-contract-proof.md) and [contract proof plan](copilot-cli-contract-proof.md).
+**Status: NO-GO because a core reviewer boundary cannot be established.** The harness and report exist, but model/tool security probes did not run because the isolated CLI could not resolve OAuth from Windows Credential Manager. Resolve authentication while retaining isolated configuration, complete the authenticated probes, and establish the requested controls before starting Phase 2. The experimental Windows sandbox is not assumed by the v0.1 contract. See the [Phase 1 evidence report](phase1-copilot-cli-contract-proof.md) and [contract proof plan](copilot-cli-contract-proof.md).
 
 ## Phase 2 — Independent contract/security verification
 
