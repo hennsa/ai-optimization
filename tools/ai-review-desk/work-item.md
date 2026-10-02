@@ -9,7 +9,7 @@ Implement the accepted v0.1 design in core/Git/Copilot integration slices, then 
 - Phase 0 (design) is complete.
 - Phase 1 authenticated proof is complete for Copilot CLI 1.0.91. Its effective tool manifest was restricted to `view`, `grep`, and `glob`; adversarial fixture fingerprints remained unchanged. See the report for probe-by-probe limits.
 - Phase 2 independent verification is complete: **VERIFIED WITH REQUIRED DESIGN CHANGES**. The model tool restriction held, but profile hooks and MCP startup can execute outside that manifest and Phase 1's launch allowed sibling temp reads. See the [Phase 2 report](docs/phase2-copilot-cli-verification.md).
-- No WPF product implementation or global Codex configuration change has started. The next active work is implementation, beginning with core/Git/Copilot integration.
+- The first executable WPF vertical slice is implemented under `src/` with `AIReviewDesk.App`, `AIReviewDesk.Core`, and `AIReviewDesk.Infrastructure`, plus behavior tests under `tests/AIReviewDesk.Tests`. It supports local project registration, folder-picker add flow, safe removal, project switching, built-in profile display, project/application defaults, local Git inspection, and app-local JSON persistence. Copilot execution remains intentionally unimplemented.
 
 ## Accepted direction
 
@@ -33,7 +33,9 @@ Implement the accepted v0.1 design in core/Git/Copilot integration slices, then 
 
 ## Next active work
 
-Begin the implementation plan's Phase 3 core/Git inspection and Phase 4 Copilot integration slices. Incorporate the Phase 2 required design changes in the fixed launch, profile preflight, JSONL validation, cancellation, and stale-result handling. Product release remains gated on end-to-end verification against the real launch path. This Phase 2 task itself did not start application implementation. The experimental Windows sandbox is not an assumed prerequisite.
+Implement the Copilot integration slice only after preserving the Phase 2 safeguards: fixed `--disallow-temp-dir` launch, app-owned profile/run-directory executable-configuration preflight, exact constrained invocation, completed JSONL/tool-manifest validation, cancellation rejection, and before/after repository fingerprints with stale-result rejection. Product release remains gated on end-to-end verification against the real launch path. The experimental Windows sandbox is not an assumed prerequisite.
+
+The current slice is verified with a .NET 10 solution build, 18 automated Core/Infrastructure tests, and a manual Windows run covering the empty state, native folder selection, repository-root detection, inferred base/profile defaults, project registration, live Git summary, and project-defaults dialog. Settings and future Reviews/Profiles areas are implemented as intentional product surfaces; Copilot and review history remain planned.
 
 ## Artifact and repository state
 

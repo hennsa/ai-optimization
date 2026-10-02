@@ -1,0 +1,169 @@
+<ui:FluentWindow x:Class="AIReviewDesk.App.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+ Title="AI Review Desk" Width="1180" Height="820" MinWidth="900" MinHeight="620"
+ WindowStartupLocation="CenterScreen" ExtendsContentIntoTitleBar="True"
+ Loaded="OnLoaded" Activated="OnActivated">
+ <Grid>
+  <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+  <ui:TitleBar Title="AI Review Desk" ShowMaximize="True" />
+  <Grid Grid.Row="1" IsEnabled="{Binding Interactive}">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="252" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+   <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0" Padding="16,20,16,16">
+    <DockPanel LastChildFill="True">
+     <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="YOUR WORKSPACE" FontSize="11" FontWeight="SemiBold" Style="{StaticResource Caption}" Margin="12,0,0,16" />
+      <ui:Button Content="＋  Add project" Appearance="Primary" HorizontalAlignment="Stretch" Click="OnAdd" AutomationProperties.AutomationId="AddProject" />
+      <StackPanel Margin="0,20,0,12">
+       <ui:Button Content="Projects" Tag="Projects" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,4" />
+       <ui:Button Content="Reviews" Tag="Reviews" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,4" />
+       <ui:Button Content="Profiles" Tag="Profiles" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,4" />
+       <ui:Button Content="Settings" Tag="Settings" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+      </StackPanel>
+      <TextBlock Text="PROJECTS" FontSize="11" FontWeight="SemiBold" Style="{StaticResource Caption}" Margin="12,8,0,10" />
+     </StackPanel>
+     <TextBlock DockPanel.Dock="Bottom" Text="AI Review Desk  ·  Preview 0.1" Style="{StaticResource Caption}" FontSize="11" Margin="12,16,0,0" />
+     <ListBox ItemsSource="{Binding Projects}" SelectedItem="{Binding Selected, Mode=OneWay}" SelectionChanged="OnProjectSelected" BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Registered projects">
+      <ListBox.ItemTemplate><DataTemplate>
+       <StackPanel Margin="3,5" ToolTip="{Binding RepositoryPath}">
+        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding RepositoryPath}" Style="{StaticResource Caption}" FontSize="11" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+       </StackPanel>
+      </DataTemplate></ListBox.ItemTemplate>
+     </ListBox>
+    </DockPanel>
+   </Border>
+   <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="32,22,32,28" MaxWidth="1000">
+     <Border Style="{StaticResource Card}" Visibility="{Binding HasNotice, Converter={StaticResource BoolVisibility}}">
+      <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
+     </Border>
+     <Border Style="{StaticResource Card}" Visibility="{Binding HasError, Converter={StaticResource BoolVisibility}}" BorderBrush="#D99043">
+      <StackPanel><TextBlock Text="Something needs attention" FontWeight="SemiBold" Margin="0,0,0,6" /><TextBlock Text="{Binding Error}" TextWrapping="Wrap" /></StackPanel>
+     </Border>
+     <StackPanel Visibility="{Binding ShowProjects, Converter={StaticResource BoolVisibility}}">
+      <StackPanel Visibility="{Binding Empty, Converter={StaticResource BoolVisibility}}" Margin="16,72,16,0">
+       <ui:SymbolIcon Symbol="FolderOpen24" FontSize="52" HorizontalAlignment="Left" Margin="0,0,0,24" />
+       <TextBlock Text="A clear view of your next review" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" />
+       <TextBlock Text="Bring your repositories together. See what changed, choose useful defaults, and get ready for independent code review." Style="{StaticResource Caption}" FontSize="15" Margin="0,14,0,24" MaxWidth="540" HorizontalAlignment="Left" />
+       <ui:Button Content="Add your first project" Appearance="Primary" Click="OnAdd" />
+       <TextBlock Text="Choose any folder inside a Git repository. Your project settings stay on this PC." Style="{StaticResource Caption}" Margin="0,20,0,0" />
+      </StackPanel>
+      <StackPanel Visibility="{Binding HasProject, Converter={StaticResource BoolVisibility}}">
+       <TextBlock Text="PROJECT OVERVIEW" Style="{StaticResource Caption}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10" />
+       <TextBlock Text="{Binding Selected.DisplayName}" FontSize="30" FontWeight="SemiBold" TextWrapping="Wrap" />
+       <TextBlock Text="{Binding Selected.RepositoryPath}" Style="{StaticResource Caption}" Margin="0,6,0,18" TextWrapping="Wrap" />
+       <WrapPanel Margin="0,0,0,24">
+        <ui:Button Content="Refresh" Click="OnRefresh" Margin="0,0,8,6" />
+        <ui:Button Content="Project defaults" Click="OnEdit" Margin="0,0,8,6" />
+        <ui:Button Content="Open folder" Click="OnOpenProject" Margin="0,0,8,6" />
+        <ui:Button Content="Remove project" Click="OnRemove" Margin="0,0,0,6" />
+       </WrapPanel>
+       <Border Style="{StaticResource Card}" Visibility="{Binding SnapshotUnavailable, Converter={StaticResource BoolVisibility}}">
+        <StackPanel><TextBlock Text="Repository state unavailable" Style="{StaticResource SectionTitle}" /><TextBlock Text="Check the message above, then refresh to try again. You can still edit defaults or remove this registration." Style="{StaticResource Caption}" /></StackPanel>
+       </Border>
+       <StackPanel Visibility="{Binding HasSnapshot, Converter={StaticResource BoolVisibility}}">
+        <Border Style="{StaticResource Card}">
+         <StackPanel>
+          <TextBlock Text="{Binding WorkingState}" Style="{StaticResource SectionTitle}" />
+          <Grid Margin="0,8,0,4">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions>
+           <StackPanel Margin="0,0,16,0"><TextBlock Text="CURRENT BRANCH" Style="{StaticResource Caption}" FontSize="11" /><TextBlock Text="{Binding Snapshot.Branch}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,7,0,0" /></StackPanel>
+           <StackPanel Grid.Column="1" Margin="0,0,16,0"><TextBlock Text="DEFAULT BASE" Style="{StaticResource Caption}" FontSize="11" /><TextBlock Text="{Binding BaseLabel}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,7,0,0" /></StackPanel>
+           <StackPanel Grid.Column="2"><TextBlock Text="CHANGED FILES" Style="{StaticResource Caption}" FontSize="11" /><TextBlock Text="{Binding Snapshot.ChangedFileCount}" FontSize="26" FontWeight="SemiBold" Margin="0,2,0,0" /></StackPanel>
+          </Grid>
+         </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}" Visibility="{Binding HasBaseWarning, Converter={StaticResource BoolVisibility}}" BorderBrush="#D99043"><TextBlock Text="{Binding Snapshot.BaseWarning}" TextWrapping="Wrap" /></Border>
+        <Border Style="{StaticResource Card}">
+         <StackPanel><TextBlock Text="Working changes" Style="{StaticResource SectionTitle}" />
+          <TextBlock Text="{Binding Snapshot.DiffSummary}" TextWrapping="Wrap" FontSize="15" />
+          <TextBlock Text="Tracked line changes and untracked file counts are shown separately. Local remote-tracking refs may be out of date." Style="{StaticResource Caption}" Margin="0,10,0,0" />
+         </StackPanel>
+        </Border>
+        <Expander Header="Git details" Margin="0,0,0,16" HorizontalContentAlignment="Stretch">
+         <StackPanel Margin="16">
+          <WrapPanel Margin="0,0,0,16">
+           <TextBlock Text="{Binding Snapshot.StagedCount, StringFormat='Staged: {0}'}" Margin="0,0,24,0" />
+           <TextBlock Text="{Binding Snapshot.UnstagedCount, StringFormat='Unstaged: {0}'}" Margin="0,0,24,0" />
+           <TextBlock Text="{Binding Snapshot.UntrackedCount, StringFormat='Untracked: {0}'}" Margin="0,0,24,0" />
+           <TextBlock Text="{Binding Snapshot.ConflictCount, StringFormat='Conflicts: {0}'}" />
+          </WrapPanel>
+          <TextBlock Text="HEAD" Style="{StaticResource Caption}" /><TextBlock Text="{Binding Snapshot.HeadSha, TargetNullValue='No commits yet'}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,4,0,14" />
+          <TextBlock Text="MERGE BASE" Style="{StaticResource Caption}" /><TextBlock Text="{Binding Snapshot.MergeBaseSha, TargetNullValue='Not available'}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,4,0,0" />
+         </StackPanel>
+        </Expander>
+        <TextBlock Text="{Binding Refreshed}" Style="{StaticResource Caption}" FontSize="11" Margin="0,0,0,24" />
+       </StackPanel>
+       <Border Style="{StaticResource Card}"><StackPanel>
+        <TextBlock Text="Ready for the next step" Style="{StaticResource SectionTitle}" />
+        <TextBlock Text="{Binding ProfileLabel, StringFormat='Default profile: {0}'}" Margin="0,0,0,8" />
+        <TextBlock Text="Review execution is coming in the next slice. For now, organize your projects and inspect their local Git state." Style="{StaticResource Caption}" />
+       </StackPanel></Border>
+      </StackPanel>
+     </StackPanel>
+     <StackPanel Visibility="{Binding ShowReviews, Converter={StaticResource BoolVisibility}}">
+      <TextBlock Text="Reviews" FontSize="30" FontWeight="SemiBold" Margin="0,0,0,24" />
+      <Border Style="{StaticResource Card}" Padding="32"><StackPanel>
+       <ui:SymbolIcon Symbol="DocumentSearch24" FontSize="40" HorizontalAlignment="Left" Margin="0,0,0,20" />
+       <TextBlock Text="Your reviews will live here" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="Independent Copilot reviews and history are planned for the next slice. No reviewer is connected and no review has been run by this application." Style="{StaticResource Caption}" />
+       <ui:Button Content="Go to projects" Tag="Projects" Click="OnNavigate" Margin="0,24,0,0" />
+      </StackPanel></Border>
+     </StackPanel>
+     <StackPanel Visibility="{Binding ShowProfiles, Converter={StaticResource BoolVisibility}}">
+      <TextBlock Text="Review profiles" FontSize="30" FontWeight="SemiBold" />
+      <TextBlock Text="A focused lens for each kind of change. Choose a project's default in Project defaults." Style="{StaticResource Caption}" Margin="0,10,0,24" />
+      <ItemsControl ItemsSource="{Binding Profiles}"><ItemsControl.ItemTemplate><DataTemplate>
+       <Border Style="{StaticResource Card}"><StackPanel>
+        <TextBlock Text="{Binding Name}" Style="{StaticResource SectionTitle}" />
+        <TextBlock Text="{Binding Description}" Style="{StaticResource Caption}" />
+       </StackPanel></Border>
+      </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+      <TextBlock Text="Built-in profiles · Version 1 · Custom editing and cross-repository reviews are not available." Style="{StaticResource Caption}" />
+     </StackPanel>
+     <StackPanel Visibility="{Binding ShowSettings, Converter={StaticResource BoolVisibility}}">
+      <TextBlock Text="Settings" FontSize="30" FontWeight="SemiBold" Margin="0,0,0,24" />
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="General" Style="{StaticResource SectionTitle}" />
+       <CheckBox x:Name="RefreshSetting" Content="Refresh repository state when returning to the app" IsChecked="{Binding State.RefreshOnActivate, Mode=OneWay}" />
+      </StackPanel></Border>
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="Appearance" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="Color theme" Margin="0,0,0,8" />
+       <ComboBox x:Name="ThemeSetting" Width="220" HorizontalAlignment="Left" SelectedValuePath="Content" SelectedValue="{Binding State.Theme, Mode=OneWay}" AutomationProperties.Name="Color theme">
+        <ComboBoxItem Content="System" /><ComboBoxItem Content="Light" /><ComboBoxItem Content="Dark" />
+       </ComboBox>
+      </StackPanel></Border>
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="Review defaults" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="Default profile for new projects" Margin="0,0,0,8" />
+       <ComboBox x:Name="ProfileSetting" ItemsSource="{Binding Profiles}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding State.DefaultProfileId, Mode=OneWay}" MinWidth="260" HorizontalAlignment="Left" AutomationProperties.Name="Default profile for new projects" />
+       <TextBlock Text="Existing projects keep their own defaults." Style="{StaticResource Caption}" Margin="0,10,0,0" />
+      </StackPanel></Border>
+      <ui:Button Content="Save settings" Appearance="Primary" Click="OnSaveSettings" Margin="0,0,0,24" />
+      <TextBlock x:Name="SettingsSaved" Style="{StaticResource Caption}" Margin="0,0,0,12" />
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="Copilot" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="Not connected in this preview" FontWeight="SemiBold" Margin="0,0,0,8" />
+       <TextBlock Text="The review runner and sign-in flow will arrive in a later slice. This app does not launch Copilot or access its credentials." Style="{StaticResource Caption}" />
+      </StackPanel></Border>
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="Data and history" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="Project registrations and preferences are stored locally. Removing a project only removes its registration; repository files stay in place. Review history is not yet available." Style="{StaticResource Caption}" />
+       <TextBlock Text="{Binding DataDirectory}" TextWrapping="Wrap" Margin="0,12,0,12" />
+       <ui:Button Content="Open data folder" Click="OnOpenData" />
+      </StackPanel></Border>
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="About" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="AI Review Desk · 0.1.0 preview" FontWeight="SemiBold" Margin="0,0,0,8" />
+       <TextBlock Text="A focused workspace for independent code review. Built with .NET 10, WPF UI and the .NET Community Toolkit (MIT)." Style="{StaticResource Caption}" />
+      </StackPanel></Border>
+     </StackPanel>
+    </StackPanel>
+   </ScrollViewer>
+  </Grid>
+  <ProgressBar Grid.Row="2" Height="3" IsIndeterminate="True" Visibility="{Binding Busy, Converter={StaticResource BoolVisibility}}" AutomationProperties.Name="Loading repository state" />
+ </Grid>
+</ui:FluentWindow>

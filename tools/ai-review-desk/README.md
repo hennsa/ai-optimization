@@ -1,5 +1,23 @@
 # AI Review Desk v0.1 — Product and Architecture Design
 
+## Executable preview
+
+The first desktop slice implements project registration, local Git inspection, built-in profile metadata, and application/project defaults. Copilot execution and review history are not implemented yet.
+
+On Windows with the .NET 10 SDK and Git installed:
+
+```powershell
+dotnet build tools/ai-review-desk/AIReviewDesk.slnx -m:1
+dotnet test tools/ai-review-desk/AIReviewDesk.slnx --no-build -m:1
+dotnet run --project tools/ai-review-desk/src/AIReviewDesk.App --no-build
+```
+
+Use **Add project** to choose any folder within a Git working tree, confirm the detected root/defaults, and select projects from the sidebar. **Project defaults** changes the display name, base ref and profile. **Remove project** removes only its registration. **Refresh** inspects local state without fetching; Settings can enable refresh when returning to the app. Git details expand to show staged/unstaged/untracked/conflict counts and commit identities. Remote-tracking refs are local observations and may be stale.
+
+The application uses WPF UI 4.3.0 and CommunityToolkit.Mvvm 8.4.2 (MIT; verified compatible with .NET 10). Application state is stored in `%LOCALAPPDATA%\AIReviewDesk\app-state.json`, with a recovery backup. The desktop is single-instance to avoid concurrent registry writers. It does not access the dedicated Copilot profile. Source is divided into App (WPF views/view model), Core (plain data models and built-in profiles), and Infrastructure (Git inspection and registry persistence), with behavior tests under `tests/AIReviewDesk.Tests`.
+
+The following sections remain the broader v0.1 design; capabilities beyond this executable preview are planned work.
+
 ## Purpose and authority
 
 AI Review Desk is a focused Windows desktop application for obtaining technically constrained, independent code reviews from GitHub Copilot CLI. Its workflow is:

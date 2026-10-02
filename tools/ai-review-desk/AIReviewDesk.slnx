@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AIReviewDesk.App/AIReviewDesk.App.csproj" />
+    <Project Path="src/AIReviewDesk.Core/AIReviewDesk.Core.csproj" />
+    <Project Path="src/AIReviewDesk.Infrastructure/AIReviewDesk.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AIReviewDesk.Tests/AIReviewDesk.Tests.csproj" />
+  </Folder>
+</Solution>
