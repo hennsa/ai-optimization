@@ -4,9 +4,13 @@
 
 Establish whether Copilot CLI can support the AI Review Desk read-only reviewer boundary and required transport before any WPF product implementation. This document is an investigation plan, not a claim that any behavior is supported.
 
+## Phase 1 result
+
+The Phase 1 run ended **NO-GO for Phase 2 readiness and WPF implementation** because the isolated CLI had no authentication and did not reach model/tool execution. The detailed evidence and documented/observed/unresolved distinction are in [the Phase 1 proof report](phase1-copilot-cli-contract-proof.md). Repeat the unresolved probes with isolated authentication before advancing.
+
 ## Proposed contract to prove
 
-AI Review Desk launches a non-interactive Copilot CLI process from an application-owned run directory with an isolated application-specific `COPILOT_HOME`. It supplies the reviewed repository only as a readable additional directory and provides a deterministic Git review diff/context through prompt input. The allowed source-inspection surface is ideally only `view`, `grep`, and `glob`. No shell, file modification/create/patch, subagents, arbitrary MCP, hooks, or repository custom instructions should be available. The process should stream structured JSON/JSONL, accept cancellation, and never require a shell-built command string.
+AI Review Desk launches a non-interactive Copilot CLI process from an application-owned run directory with an isolated application-specific `COPILOT_HOME`. It supplies the reviewed repository only as a readable additional directory and provides a deterministic Git review diff/context through stdin. The allowed source-inspection surface is ideally only `view`, `grep`, and `glob`. No shell, file modification/create/patch, subagents, arbitrary MCP, hooks, or repository custom instructions should be available. The process should stream structured JSON/JSONL, accept cancellation, and use safe argument APIs. Current docs say `--add-dir` also loads that directory's `.github/skills` and `.github/agents`; its effect must be tested against the available-tool boundary. Copilot's OS sandbox is documented as experimental and host-dependent; verify the read-only fixture policy and fail-closed behavior before accepting it.
 
 All clauses above are hypotheses until tested against the exact CLI version and operating environment selected for the proof. Do not infer them from prompt wording or from a successful benign review.
 

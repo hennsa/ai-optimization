@@ -1,6 +1,6 @@
 # AI Review Desk Implementation Plan
 
-This plan separates investigation, product implementation, and verification. The current design task is Phase 0. No later phase is authorized by this plan alone; proceed under applicable repository governance and the current work item.
+This plan separates investigation, product implementation, and verification. Phase 0 is complete. Phase 1 ended NO-GO for advancement because the isolated run could not authenticate; the current work item and linked evidence report control the next step.
 
 ## Phase 0 — Design
 
@@ -8,7 +8,7 @@ This plan separates investigation, product implementation, and verification. The
 
 ## Phase 1 — Copilot CLI contract proof
 
-Build a small disposable console/test harness only. No WPF product implementation. Prove or reject the reviewer security boundary, non-interactive invocation, isolated `COPILOT_HOME`, additional-directory reading, tool restrictions, discovery behavior, auth, stdin, structured JSON/JSONL, streaming, cancellation, forbidden capability behavior, process-tree termination, practical diff limits, and repository invariance. Record a go/no-go decision and evidence. Use the [contract proof plan](copilot-cli-contract-proof.md).
+**Status: NO-GO for Phase 2 readiness.** The harness and report exist, but model/tool security probes did not run because the isolated CLI had no authentication. Continue Phase 1 with an explicitly provisioned isolated authentication method and establish the requested controls before starting Phase 2. See the [Phase 1 evidence report](phase1-copilot-cli-contract-proof.md) and [contract proof plan](copilot-cli-contract-proof.md).
 
 ## Phase 2 — Independent contract/security verification
 
@@ -45,8 +45,8 @@ Verify project add/switch/defaults; all scopes and path narrowing; no-fetch base
 ## Sequence gates and outputs
 
 1. Phase 0 provides this design set.
-2. Phase 1 produces reproducible CLI behavior evidence and a go/no-go recommendation.
-3. Phase 2 independently challenges that evidence and approves or rejects the security contract.
+2. Phase 1 must produce reproducible CLI behavior evidence and a go/no-go recommendation; current evidence is insufficient to pass.
+3. Phase 2 independently challenges a complete Phase 1 proof and approves or rejects the security contract.
 4. Phases 3–6 produce the MVP in vertical slices under new implementation work items.
 5. Phase 7 provides end-to-end and security acceptance evidence before release.
 
