@@ -1,6 +1,6 @@
 # AI Review Desk Implementation Plan
 
-This plan separates investigation, product implementation, and verification. Phase 0 is complete. Phase 1 recommends GO for Phase 2 independent verification using the persistent application-owned Copilot profile; the current work item and linked evidence report control the next step.
+This plan separates investigation, product implementation, and verification. Phases 0–2 are complete. Phase 2 verified the model tool boundary with required launch and configuration changes; the [current work item](../work-item.md) and [Phase 2 report](phase2-copilot-cli-verification.md) control the next implementation step.
 
 ## Phase 0 — Design
 
@@ -8,11 +8,11 @@ This plan separates investigation, product implementation, and verification. Pha
 
 ## Phase 1 — Copilot CLI contract proof
 
-**Status: GO for Phase 2 independent verification.** Authenticated Phase 1 probes established the external read/search path, an effective `view`/`grep`/`glob` tool allowlist, fixture invariance under adversarial prompts, structured streaming, stdin transport, active cancellation, and concurrent-change detection. Phase 2 must independently challenge extension/hook/MCP behavior and residual stale-state handling. The experimental Windows sandbox is not assumed by the v0.1 contract. See the [Phase 1 evidence report](phase1-copilot-cli-contract-proof.md) and [contract proof plan](copilot-cli-contract-proof.md).
+**Status: complete.** Authenticated Phase 1 probes established the external read/search path, an effective `view`/`grep`/`glob` tool allowlist, fixture invariance under adversarial prompts, structured streaming, stdin transport, active cancellation, and concurrent-change detection. See the [Phase 1 evidence report](phase1-copilot-cli-contract-proof.md) and [contract proof plan](copilot-cli-contract-proof.md).
 
 ## Phase 2 — Independent contract/security verification
 
-Have a separate verifier challenge Phase 1 evidence and attempt to break the read-only boundary with synthetic fixtures. Check instruction/config discovery, tool denial, modification and command attempts, cancellation, and mid-run state changes. Resolve discrepancies and record explicit residual risks. Do not advance to product implementation if the boundary depends only on prompt compliance or remains materially ambiguous.
+**Status: complete — VERIFIED WITH REQUIRED DESIGN CHANGES.** Independent synthetic probes reproduced the three-tool model boundary and found out-of-band profile hook/MCP startup plus automatic temp-directory reads. The [Phase 2 report](phase2-copilot-cli-verification.md) defines required pre-launch profile checks, `--disallow-temp-dir`, and completed-run validation. These are product acceptance criteria, not optional hardening. The experimental Windows sandbox is not assumed by v0.1.
 
 ## Phase 3 — Core and Git inspection
 
@@ -20,7 +20,7 @@ Implement the small UI-independent domain/application model, project registry co
 
 ## Phase 4 — Copilot integration
 
-Implement version/capability detection from proven CLI behavior, safe process argument construction, redirected stdin/stdout/stderr, streaming JSONL handling, cancellation and process-tree termination, structured result parsing, and before/after integrity checks. Keep runs in owned directories with isolated state and enforce only the proof-approved capabilities. Report unsupported CLI contract conditions clearly.
+Implement version/capability detection from proven CLI behavior, safe process argument construction, redirected stdin/stdout/stderr, streaming JSONL handling, cancellation and process-tree termination, structured result parsing, and before/after integrity checks. Keep runs in empty owned directories, add only the reviewed repository, use `--disallow-temp-dir`, and enforce the proof-approved model tools. Before launch, fail closed on unapproved hook/MCP/plugin/extension configuration in the app-owned profile or run directory. After exit, reject absent/extra tools, unexpected MCP status, malformed or partial JSONL, nonzero exit, cancellation, or changed repository state before showing trusted findings. The tool manifest is not an early startup gate. Report unsupported CLI contract conditions clearly.
 
 ## Phase 5 — Persistence and handoff
 
@@ -45,8 +45,8 @@ Verify project add/switch/defaults; all scopes and path narrowing; no-fetch base
 ## Sequence gates and outputs
 
 1. Phase 0 provides this design set.
-2. Phase 1 has produced a reproducible authenticated CLI proof and recommends GO for independent Phase 2 verification.
-3. Phase 2 independently challenges a complete Phase 1 proof and approves or rejects the security contract.
+2. Phase 1 produced a reproducible authenticated CLI proof and handed it to independent verification.
+3. Phase 2 independently challenged the proof and accepted a revised contract with required design changes.
 4. Phases 3–6 produce the MVP in vertical slices under new implementation work items.
 5. Phase 7 provides end-to-end and security acceptance evidence before release.
 
