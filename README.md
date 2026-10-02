@@ -29,6 +29,7 @@ This directory does not replace the installed global configuration. It documents
 - `experiments/primary-model-persistence.md` - controlled evidence about persisted primary-model selection.
 - `experiments/primary-runtime-reporting.md` - per-turn VIV runtime evidence and the primary-model self-reporting discrepancy.
 - `PROMPT-sol-high-assessment.md` - historical ready-to-use assessment prompt.
+- `tools/ai-review-desk/README.md` - AI Review Desk v0.1 product and architecture design, with its work item, Copilot CLI proof plan, profile catalogue, and staged implementation plan.
 
 ## Important rule
 
