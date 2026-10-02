@@ -53,9 +53,9 @@ CLI switches and security mechanics are product policy; do not expose them as in
 
 AI Review Desk owns deterministic inspection concepts: branch, HEAD, configured and resolved base, merge-base, status, staged/unstaged/untracked state, changed paths, diff statistics, review diff, and a repository fingerprint captured before and after the run.
 
-The intended Copilot environment is launched from an AI Review Desk-owned run directory, with an isolated application-specific `COPILOT_HOME`, the reviewed repository supplied as a readable additional directory, non-interactive execution, and structured JSON/JSONL streaming where supported. The desired source-inspection surface is limited to `view`, `grep`, and `glob`. Shell, editing/patch tools, subagents, arbitrary MCP, hooks, and repository custom instruction discovery should be unavailable where the CLI supports enforcing that boundary. AI Review Desk supplies the Git diff/context.
+The intended Copilot environment uses a dedicated persistent profile at `%LOCALAPPDATA%\AIReviewDesk\Copilot`, authenticated through Copilot CLI's official OAuth login flow. AI Review Desk does not manage or persist the credential value. Each review launches from an ephemeral app-owned working directory and supplies the reviewed repository separately as a readable additional directory. Phase 1 observed an effective `view`, `grep`, `glob` tool manifest with CLI 1.0.91; the product must fail closed if the observed manifest differs. AI Review Desk supplies the Git diff/context through stdin and disables remote/session export, custom instructions, profile hooks, built-in MCP, and auto-update.
 
-These are **design goals, not proven CLI facts**. Tool names, directory access semantics, instruction discovery, and all other CLI behavior remain assumptions pending the Phase 1 proof and Phase 2 independent verification. Do not weaken the boundary silently to make a review run; a contract failure blocks product implementation or requires a revised, explicitly assessed design.
+Phase 1 evidence is documented in the [contract proof report](docs/phase1-copilot-cli-contract-proof.md). Phase 2 must independently verify the exact launch contract and challenge extension, hook, MCP, cancellation, and stale-state behavior before product implementation. Do not weaken the boundary silently to make a review run; a contract failure blocks implementation or requires a revised, explicitly assessed design.
 
 Fingerprint equality is the minimum integrity condition: if the relevant repository state differs after execution, the result is marked changed/stale and cannot be presented as a clean review of the original snapshot. Where practical, record enough components to help distinguish an external user/Codex change from a reviewer-side mutation; attribution is secondary to detecting the change.
 
@@ -118,7 +118,7 @@ Prefer installed `git.exe` over a Git library unless a concrete requirement just
 
 ## Assumptions and unresolved questions
 
-The supported Copilot CLI flags, permission semantics, additional-directory behavior, home isolation, instruction/agent/hook/skill/MCP discovery, authentication behavior, JSONL event contract, streaming, stdin handling, cancellation, capability denial, and practical context limits are not accepted facts. Phase 1 must establish them in a disposable harness; Phase 2 must independently attempt to break the read-only boundary. See [the proof plan](docs/copilot-cli-contract-proof.md). Keep future ideas distinct from v0.1 scope and do not turn undocumented behavior into a product guarantee.
+Phase 1 observations apply to Copilot CLI 1.0.91 and the tested Windows host; they do not establish behavior for later CLI versions or the future product process. Phase 2 must independently verify the launch manifest, profile-level hooks and custom MCP isolation, extension behavior, and stale-result handling. See [the proof plan](docs/copilot-cli-contract-proof.md). Keep future ideas distinct from v0.1 scope and do not turn undocumented behavior into a product guarantee.
 
 ## Related documents
 

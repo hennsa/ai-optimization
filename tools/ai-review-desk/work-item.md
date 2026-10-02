@@ -7,16 +7,17 @@ Define a small, reviewable v0.1 product design and delivery plan for AI Review D
 ## Current state
 
 - Phase 0 (design) is complete.
-- Phase 1 has a small executable harness and a written evidence record. Copilot CLI 1.0.91 did not resolve the manually provisioned OAuth credential with a fresh isolated `COPILOT_HOME`, so authenticated model/tool probes could not run.
-- Phase 1 recommendation: **NO-GO because a core reviewer boundary cannot be established.** The auth/configuration incompatibility blocks proof of the read-only boundary; no bypass was observed because model/tool execution was not reached.
+- Phase 1 authenticated proof is complete for Copilot CLI 1.0.91. Its effective tool manifest was restricted to `view`, `grep`, and `glob`; adversarial fixture fingerprints remained unchanged. See the report for probe-by-probe limits.
+- Phase 1 recommendation: **GO for Phase 2 independent verification.** This does not authorize WPF implementation.
 - No WPF product implementation or global Codex configuration change has started.
 
 ## Accepted direction
 
 - AI Review Desk is a Windows-only .NET 10 WPF desktop product that coordinates constrained, independent Copilot reviews; it is not a general coding agent.
 - Codex remains the primary engineering and implementation agent. Carlo retains final decision authority.
-- AI Review Desk owns repository inspection and supplies deterministic review context. The intended read/search-only surface remains unproven; see the Phase 1 evidence report before implementation.
-- Configuration and history belong under `%LOCALAPPDATA%`; customer repositories need no AI Review Desk artifacts.
+- AI Review Desk owns repository inspection and supplies deterministic review context. Each review uses an ephemeral run directory; the repository is supplied separately as a read-only additional directory.
+- Use a dedicated, persistent Copilot CLI profile at `%LOCALAPPDATA%\AIReviewDesk\Copilot`, authenticated once through the normal `copilot login --web-flow` OAuth flow. AI Review Desk does not read, copy, export, or persist OAuth credential values. A fresh empty Copilot home does not inherit the user's normal CLI authentication.
+- Configuration, the dedicated Copilot profile, and history belong under `%LOCALAPPDATA%`; customer repositories need no AI Review Desk artifacts.
 - Reviews are evidence for later ChatGPT/Codex assessment, never automatic implementation tasks.
 - Existing repository governance, work-item practice, and global routing policy remain authoritative.
 
@@ -30,7 +31,7 @@ Define a small, reviewable v0.1 product design and delivery plan for AI Review D
 
 ## Open gate
 
-Do not begin WPF product implementation or Phase 2. First resolve the supported Windows OAuth credential lookup while retaining the isolated CLI configuration; no PAT or copied token should be introduced as a shortcut. Then complete the blocked authenticated Phase 1 model/tool/security probes and obtain independent Phase 2 verification. Unknown Copilot CLI behavior remains unknown until experimentally established. The experimental Windows sandbox is not an assumed part of the v0.1 contract.
+Phase 1 recommends proceeding to independent Phase 2 verification. Do not begin WPF product implementation in this task. Phase 2 should challenge the exact persistent-profile launch contract, especially effective-tool fail-closed behavior, repository extension loading, hooks/MCP isolation, and stale-result handling. The experimental Windows sandbox is not an assumed part of the v0.1 contract.
 
 ## Artifact and repository state
 

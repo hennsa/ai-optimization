@@ -6,11 +6,11 @@ Establish whether Copilot CLI can support the AI Review Desk read-only reviewer 
 
 ## Phase 1 result
 
-The current Phase 1 result is **NO-GO because a core reviewer boundary cannot be established**: Copilot CLI 1.0.91 did not resolve the manually provisioned OAuth credential under the fresh isolated `COPILOT_HOME`, so it did not reach model/tool execution. This is an authentication/configuration integration blocker, not an observed reviewer bypass. The detailed evidence and documented/observed/unresolved distinction are in [the Phase 1 proof report](phase1-copilot-cli-contract-proof.md). Resolve authentication without weakening isolation, then repeat the blocked probes before advancing.
+The current Phase 1 result is **GO for Phase 2 independent verification**. A fresh temporary `COPILOT_HOME` does not inherit authentication, while a persistent application-owned profile authenticated explicitly through `copilot login --web-flow` supports non-interactive prompts. Under the proved invocation, the effective model tool set was exactly `view`, `grep`, and `glob`. See [the Phase 1 proof report](phase1-copilot-cli-contract-proof.md) for evidence and remaining limits.
 
 ## Proposed contract to prove
 
-AI Review Desk launches a non-interactive Copilot CLI process from an application-owned run directory with an isolated application-specific `COPILOT_HOME`. It supplies the reviewed repository only as a readable additional directory and provides a deterministic Git review diff/context through stdin. The allowed source-inspection surface is ideally only `view`, `grep`, and `glob`. No shell, file modification/create/patch, subagents, arbitrary MCP, hooks, or repository custom instructions should be available. The process should stream structured JSON/JSONL, accept cancellation, and use safe argument APIs. Current docs say `--add-dir` also loads that directory's `.github/skills` and `.github/agents`; its effect must be tested against the available-tool boundary. Copilot's OS sandbox is documented as experimental and host-dependent; verify the read-only fixture policy and fail-closed behavior before accepting it.
+AI Review Desk launches a non-interactive Copilot CLI process from an ephemeral application-owned run directory using a dedicated persistent profile at `%LOCALAPPDATA%\AIReviewDesk\Copilot`. The profile is authenticated once through the official OAuth flow; AI Review Desk does not manage or persist credential values. The reviewed repository is separate and supplied as a readable additional directory; deterministic review context is sent through stdin. The effective model tool set must be exactly `view`, `grep`, and `glob`; reject a run if the CLI manifest differs. No PowerShell/shell, create/edit/write, subagent, MCP, or patch capability should be available. Disable custom instructions and hooks, disable built-in MCPs, and keep session export/remote controls off. Current docs say `--add-dir` also loads that directory's `.github/skills` and `.github/agents`; their authority-widening effect is addressed in the Phase 1 report. Copilot's OS sandbox is experimental and is not assumed by this contract.
 
 All clauses above are hypotheses until tested against the exact CLI version and operating environment selected for the proof. Do not infer them from prompt wording or from a successful benign review.
 
@@ -27,7 +27,7 @@ The proof must distinguish documented CLI behavior from observed behavior and re
 | 1 | Can the CLI read/search a repository outside its working directory when supplied as an additional directory? | A synthetic sentinel is found while the process cwd remains the owned run directory; path restrictions and exact invocation are recorded. |
 | 2 | Can execution be restricted to only intended read/search tools? | Effective tool list is captured and an explicit capability-denial probe confirms excluded tools are unavailable. |
 | 3 | What repository instructions, agents, hooks, skills, and MCP configuration are discovered? Can each source be disabled reliably? | Marker-based fixture checks for each discovery path, both enabled and disabled conditions where applicable; record source and observed effect. |
-| 4 | Is an isolated `COPILOT_HOME` honored for config, extension, state, and auth? | Environment and filesystem observations show which state is read/written; no host user config is unintentionally loaded or mutated. |
+| 4 | Is the dedicated persistent `COPILOT_HOME` honored for config, extension, state, and auth? | Show that an empty temporary home does not inherit auth, while the explicitly OAuth-authenticated application profile works without exposing credential data or mutating a host profile. |
 | 5 | Is there a clean authentication flow for the app-launched non-interactive CLI? | First-run, unauthenticated, authenticated, and expired/failed auth cases are characterized without storing credentials in logs/history. |
 | 6 | What JSON/JSONL event shapes and terminal exit statuses occur? | Versioned examples/schema notes for success, findings, no findings, error, denial, and partial output. |
 | 7 | Does output stream incrementally and with useful progress? | Timestamped event capture demonstrates event ordering, buffering, and whether progress can be represented without a terminal. |
@@ -45,7 +45,7 @@ Additional checks should record the supported CLI version/model reporting, non-i
 
 The contract is **proven for implementation** only when all of the following hold for the selected CLI version and supported invocation:
 
-1. The reviewed repository is readable from outside the process working directory, and the supported OAuth credential works with the isolated configuration.
+1. The reviewed repository is readable from outside the process working directory, and the dedicated authenticated profile works with isolated per-review state.
 2. Effective capabilities expose only the intended read/search operations; shell, write, patch, arbitrary MCP, and subagent paths are unavailable.
 3. Repository instruction and extension discovery can be disabled or otherwise shown not to widen authority; if not, an explicitly reviewed compensating design is required before proceeding.
 4. Adversarial write/command requests cannot mutate the fixture or execute commands.
