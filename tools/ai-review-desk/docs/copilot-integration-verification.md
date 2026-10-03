@@ -1,6 +1,6 @@
 # Copilot integration slice — blocked, incomplete
 
-Windows, .NET 10.0.401, installed Copilot CLI 1.0.91. **Current result (2026-10-03): structural config inspection resolved; real profile preflight passes; first exact production review could not authenticate; execution gate retained.** Verified partial implementation is now checkpointed on `codex/ai-review-desk-secure-review`. The focused completion section at the end supersedes previous counts/delivery/blocker statements. Earlier passes below are historical evidence, not current source-control or release claims.
+Windows, .NET 10.0.401, installed Copilot CLI 1.0.91. **Current result (2026-10-03): structural inspection resolved; real profile passes preflight; matched runtime comparisons isolate the required `--no-auto-login` as the authentication blocker in this saved-profile prompt path; execution gate retained.** Verified partial work is on `codex/ai-review-desk-secure-review`. The final runtime continuation supersedes earlier uncertainty about the cause. Earlier sections are historical evidence, not current delivery/release claims.
 
 ## Blocking contract evidence
 
@@ -201,3 +201,52 @@ Final Release build passed with **0 errors, 1 NU1900 warning** for the unavailab
 All temporary synthetic fixtures, native probes, fake credentials/gh helpers and caches are removed after checking their bounded absolute cleanup root. Application Runs is empty. The official CLI persisted `experimental:false` in real settings; no synthetic hook/MCP/plugin/config was placed in the real profile, and the scanner never rewrote its config. Source/whitespace checks are completed before committing this useful verified follow-up on the feature branch. **No merge or push to main is performed**; exact feature delivery hashes/remote state are reported in the completion response. This is partial security progress, not secure-review acceptance.
 
 **Delegation: none.** The primary performed the focused inspection, implementation, tests and real attempt directly. Primary model/effort: unavailable (not authoritatively exposed).
+
+## Focused runtime continuation — automatic-login opt-out blocks the saved-account path
+
+Started from clean, pushed feature HEAD `54bc580b4e3e453feb502bb38148928922fc20d4`; main remained `3cf03e8f4598026b3c6dc9b58da9844bb7c61175`. No scanner, UI, profile-composition, environment or launch-policy code was changed. The previous synthetic auth-selection comparison lacked a positive control; the real-profile pairs below supersede its uncertainty on this host's prompt path.
+
+### Controlled setup
+
+All checks used installed **CLI 1.0.91**, the same npm loader/native binary as production, the existing `%LOCALAPPDATA%\AIReviewDesk\Copilot`, separate empty disposable cwd/cache/log directories, synthetic README context, and the real `CopilotContract.StartInfo` and `ReviewArguments`. Process creation remained redirected, `UseShellExecute=false`, `CreateNoWindow=true`, with no alternate user credentials. The host context was Windows user `HENNSA-RTX\henns`, session 1. The parent had no `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN` variable (existence-only checks). No parent token/provider/Node/authority values were queried or copied; every child environment was explicitly cleared and constructed. Working directory and profile resolution did not depend on a shell wrapper or reviewed-repository cwd.
+
+Ordinary-login diagnostics removed **only `--no-auto-login`** from the otherwise fixed arguments. This was a controlled comparison, not a production policy change. To prevent unrelated GitHub CLI authentication, matched pairs prepended an app-owned `gh.exe` helper that always exits 1, writes only an invocation marker, and never reads credentials or runs GitHub CLI. A further positive control restricted PATH to that helper, Node and Windows System32, excluding the real GitHub CLI. All other tool/temp/MCP/instruction/remote/ask-user/update/experimental restrictions and both false repository prompt switches remained in force.
+
+Preflight passed before every launch. Scanner output contained only `CredentialFieldPresent=False`, `AccountMetadataPresent=True` for the real profile. Raw protocol/diagnostic lines were transient; only fixed event names/counts, fixed error categories and validator success/count escaped. No raw stderr, credentials, identity values or review text were logged or saved. The real profile was not rewritten or copied; no new sign-in/logout/switch was performed.
+
+### Actual comparison results
+
+| Case | Difference from production | Result |
+| --- | --- | --- |
+| Baseline | None | Exit 1; `No authentication information found`; no JSONL frames. |
+| PATHEXT | Add only `PATHEXT` | Same authentication failure. |
+| Ordinary login + PATHEXT | Omit opt-out; prepend failing gh helper | Exit 0; real terminal/manifest/MCP/structured-result validation passed; 0 findings. Helper invoked and returned failure. |
+| Matched negative + PATHEXT | Same PATH/profile/environment as preceding row; restore opt-out | Exit 1; no auth, no frames; helper not invoked. |
+| Benign Windows runtime set | Add `PATHEXT`, `ProgramFiles`, `ProgramFiles(x86)`, `ProgramW6432`, `ALLUSERSPROFILE`, `PUBLIC`, `OS`, `PROCESSOR_ARCHITECTURE`, `NUMBER_OF_PROCESSORS`, `SESSIONNAME` where present | Same authentication failure. No authority variable restored. |
+| Native executable | Required opt-out; bypass Node/npm loader; same failing-gh PATH/PATHEXT | Same authentication failure. |
+| Empty home + ordinary login | Fresh isolated home; helper/PATHEXT; no credential/state copies | Exit 1; no auth; helper invoked and failed. Existing global sign-in was not inherited. |
+| Explicit profile path | Required opt-out; add supported but deprecated `--config-dir` pointing to the same dedicated home | Same authentication failure. |
+| Ordinary login, no extra variables | Production allowlist; helper PATH; omit opt-out | Exit 0; validator passed; 0 findings. Helper not invoked. |
+| Matched negative, no extra variables | Restore only opt-out in preceding case | Exit 1; no auth/frames; helper not invoked. |
+| Ordinary login, narrow PATH | Helper + Node + System32 only; PATHEXT; omit opt-out | Exit 0; validator passed; 0 findings. Only failing helper available/invoked; real gh excluded. |
+| Actual production transport | `CopilotProcess.RunAsync`, unchanged production args/environment | Exit 1; stderr present; **0 stdout frames**. Matched diagnostic instrumentation above identifies the no-auth condition. |
+
+The three successful diagnostic runs each emitted `session.mcp_servers_loaded`, `session.tools_updated`, `assistant.message`, `session.usage_checkpoint`, and terminal `result`. The existing unmodified validator accepted exact `{view,grep,glob}`, both disabled built-in MCPs, no unexpected tool/MCP/startup evidence, and `{"findings":[]}`. These observations improve real protocol evidence, but **do not satisfy production review acceptance** because the required opt-out was absent and the full production service/Git-review path was not completed.
+
+### Cause, authentication source and limits
+
+No missing benign environment dependency was found: ordinary login succeeds with the existing production allowlist, while restoring only the opt-out fails. The Node wrapper, explicit home path, process creation flags and tested Windows context additions do not explain the failure. The shipped application's actual binding is `disableAutoLogin: e.autoLogin === false` on `ProcessAuthHandle`, with the same option passed into session-manager authentication. The prompt path calls `current()` and rejects absent auth before model review. This source binding and the matched live pairs establish that **`--no-auto-login` prevents automatic selection of this saved account in the tested 1.0.91 prompt path**, not merely the observed gh fallback. This is not a universal assertion about all cached/session/account states or future versions.
+
+The successful source is **existing authentication selected by the dedicated profile**: token overrides were absent, the real gh executable was excluded in a positive control, the only gh helper returned failure, and a fresh home could not authenticate. The real dedicated config had no plaintext `authTokens` field; no authentication files from another home were supplied/copied. These controls rule out the tested environment/GitHub CLI/unrelated-home fallback explanations. Windows Credential Manager backend support remains established from the shipped runtime, and keychain-backed selection is consistent with this evidence. **The exact credential-store target/backend used by this account was not directly observed**, and no supported noninteractive CLI auth-source/identity command was established. Do not promote that inference into a direct Vault-storage proof. No credential-returning API was used to fill that gap.
+
+No supported secret-free explicit account-selection alternative compatible with the required opt-out was established. Restoring ordinary automatic login would violate the current required launch contract, even though the diagnostic helper blocked gh; it is not delivered as a workaround. The unresolved dependency is a supported way for 1.0.91 to select the dedicated saved account while retaining **`--no-auto-login`**, or separately approved/reverified CLI contract work. Broad environment inheritance, token injection, raw credential consumption, interactive command automation and an unsupported pseudo-API are not solutions.
+
+### Delivered state and verification
+
+The child environment stays unchanged: allowlisted `SystemRoot`, `WINDIR`, `PATH`, `TEMP`, `TMP`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `USERDOMAIN`, `USERNAME`, `HOMEDRIVE`, `HOMEPATH`, `COMSPEC`, `ProgramData`, plus fixed app home/cache, auto-update/tgrep false and both prompt-mode hook/extension switches false. Candidate additions were investigation-only. The scanner, machine/repository preflight, exact tools/denials, all disabling flags including `--no-auto-login`, post-run validator, integrity checks and process-tree cancellation remain intact. `ReviewContractVerified` stays **false**; no WPF/profile/UI code was touched or manually retested in this pass.
+
+No tests were added because no runtime/environment fix was justified. Existing environment/flag coverage remains. Final complete Release suite: **132 passed, 0 failed/skipped**, 32 seconds. Final Release build: **passed, 0 errors, 1 NU1900 warning** for the unavailable NuGet vulnerability feed. Whitespace checks passed; source/credential-pattern checks found no introduced secret values. No first accepted production review, production zero-findings/known-finding/multiple-profile run, live cancellation, during-run stale or completed handoff was reached. Three diagnostic zero-finding responses are explicitly separate from those acceptance cases.
+
+Only this bounded evidence and current-state documentation is committed on the feature branch; main is not merged/pushed. Synthetic helper/native-context fixture trees are removed after resolving/checking the exact cleanup root; no synthetic executable configuration was added to the real profile. Exact commit/remote/clean-tree status is in the completion response.
+
+**Delegation: none.** The primary performed the comparison directly; model/effort unavailable (not authoritatively exposed).

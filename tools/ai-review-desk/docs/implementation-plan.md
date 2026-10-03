@@ -6,6 +6,8 @@ The next slice has partial implementation and automated/manual evidence, but **P
 
 Focused completion: existing implementation checkpointed as `93ad239` on `codex/ai-review-desk-secure-review`; structural inspection and sentinel coverage added. All 132 tests and Release build pass. No required flag was weakened after the authentication failure. Start review remains disabled; authenticated protocol/zero-findings/findings/cancellation/stale/manual acceptance is outstanding. Useful verified progress is committed on the feature branch; main must not receive it as completed secure review functionality.
 
+Focused runtime continuation: matched real-profile checks authenticate with the existing environment when ordinary automatic login is enabled, and fail when only `--no-auto-login` is restored. Extra benign Windows context, native executable selection and explicit `--config-dir` did not repair the required invocation. Keep the allowlist and gate unchanged. Resolve this version-specific account-selection/opt-out compatibility before production acceptance; diagnostic runs without the required flag are not accepted reviews. See the final runtime comparison in the integration report.
+
 ## Phase 0 — Design
 
 **Status: complete.** Define the v0.1 product boundary, UX, result and history concepts, architecture direction, profiles, and staged plan. Record assumptions instead of converting unknown CLI behavior into guarantees.
