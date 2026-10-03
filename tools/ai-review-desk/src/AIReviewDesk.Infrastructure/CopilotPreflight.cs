@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 
 namespace AIReviewDesk.Infrastructure;
 
@@ -46,20 +45,20 @@ public static class CopilotPreflight
             else if (name.Equals("settings.json", StringComparison.OrdinalIgnoreCase))
             {
                 if (new FileInfo(entry).Length > 65536) Block("oversized settings.json");
-                var text = File.ReadAllText(entry);
-                using var settings = JsonDocument.Parse(text);
-                if (settings.RootElement.ValueKind != JsonValueKind.Object) Block("settings.json shape");
-                var properties = settings.RootElement.EnumerateObject().ToArray();
-                if (properties.Length != 1 || properties[0].Name != "disableAllHooks" || properties[0].Value.ValueKind != JsonValueKind.True)
-                    Block("settings.json contains unknown settings or executable contributions (hooks, MCP, plugins or extensions)");
-                evidence.Append(text);
+                try { CopilotConfigScanner.InspectSettingsFile(entry); }
+                catch (CopilotConfigBlockedException ex)
+                { throw new InvalidOperationException($"Copilot settings.json was blocked: {ex.Category}. Credential values were not decoded or returned."); }
+                evidence.AppendLine("settings:v1:disableAllHooks=true");
             }
             else if (name.Equals("config.json", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Copilot 1.0.91 config.json can contain both authentication data and executable configuration. AI Review Desk cannot safely certify this profile without inspecting credential contents. Review launch is blocked; credential contents were not read.");
+            {
+                var inspection = CopilotConfigScanner.InspectFile(entry);
+                // Only structural booleans contribute. Never hash or retain raw configuration/authentication values.
+                evidence.AppendLine($"config:v1:credential-field={inspection.CredentialFieldPresent}:account-metadata={inspection.AccountMetadataPresent}");
+            }
             else if (!StateFiles.Contains(name)) Block(name);
         }
-        // This evidence is only part of preflight. ReviewContractVerified remains false:
-        // absence here does not certify the complete 1.0.91 startup or authentication contract.
+        // Structural evidence excludes credential values; post-run protocol and repository validation remain mandatory.
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(evidence.ToString())));
     }
 

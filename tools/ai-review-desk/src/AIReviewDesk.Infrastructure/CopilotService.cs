@@ -30,7 +30,7 @@ public sealed class CopilotService
             catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
             { return new(true, true, false, null, version, ex.Message, ConfigurationBlocked: true); }
             finally { DeleteRunDirectory(preflightRun); }
-            return new(true, true, false, null, version, "Account status is unknown: CLI 1.0.91 provides no supported noninteractive account-status command. Authentication isolation and executable configuration are not yet certified. Credentials are never inspected.", ConfigurationBlocked: !CopilotContract.ReviewContractVerified);
+            return new(true, true, false, null, version, "Account status is unknown: CLI 1.0.91 provides no supported noninteractive account-status command. Configuration passed structural preflight; the official CLI owns authentication. Credential values are never decoded or retained.", ConfigurationBlocked: false);
         }
         finally { DeleteRunDirectory(run); }
     }
@@ -53,7 +53,7 @@ public sealed class CopilotService
     }
 
     public Task SignOutAsync(CancellationToken cancellationToken = default) =>
-        Task.FromException(new InvalidOperationException("CLI 1.0.91 has no supported noninteractive sign-out command. AI Review Desk cannot safely launch an interactive account command with an uncertified profile. No credentials were changed."));
+        Task.FromException(new InvalidOperationException("CLI 1.0.91 has no supported noninteractive sign-out command. AI Review Desk does not automate interactive account commands. No credentials were changed."));
 
     public async Task<ReviewRecord> RunAsync(ReviewInput input, IEnumerable<string> profileIds, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -84,7 +84,7 @@ public sealed class CopilotService
             run = CreateRunDirectory();
             var configuration = CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath);
             if (!CopilotContract.ReviewContractVerified)
-                return record with { Status = ReviewStatus.Unsupported, Diagnostic = "The credential-safe Copilot integration contract has not been verified. Review execution remains blocked; an empty profile is not a workaround." };
+                return record with { Status = ReviewStatus.Unsupported, Diagnostic = CopilotContract.ReviewExecutionBlockReason };
             var info = CopilotContract.StartInfo(CopilotContract.Detect()!, run, Profile, Path.Combine(run, "cache"), CopilotContract.ReviewArguments(input.Project.RepositoryPath, Path.Combine(run, "logs")));
             progress?.Report("Starting Copilot");
             // Recheck immediately before Process.Start. Same-user external writes remain a documented desktop trust assumption.

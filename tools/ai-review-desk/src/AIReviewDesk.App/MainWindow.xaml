@@ -120,7 +120,7 @@
       <WrapPanel Margin="0,18,0,12">
        <ui:Button Content="Preview final prompt" Click="OnPreviewPrompt" Margin="0,0,8,6" />
        <ui:Button Content="Start review" Appearance="Primary" IsEnabled="{Binding CanStartReview}" ToolTip="{Binding ReviewAvailabilityMessage}" Click="OnStartReview" Margin="0,0,8,6" />
-       <ui:Button Content="Cancel review" Click="OnCancelReview" Margin="0,0,8,6" />
+       <ui:Button Content="Cancel review" IsEnabled="{Binding IsReviewRunning}" Click="OnCancelReview" Margin="0,0,8,6" />
       </WrapPanel>
       <TextBlock Text="{Binding ReviewAvailabilityMessage}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,12" />
       <TextBlock Text="{Binding ReviewProgress}" Style="{StaticResource Caption}" Margin="0,0,0,12" />
@@ -192,7 +192,7 @@
        <TextBlock Text="{Binding AccountDetail}" Style="{StaticResource Caption}" />
        <WrapPanel Margin="0,12,0,0">
         <ui:Button Content="Refresh status" Click="OnRefreshAccount" Margin="0,0,8,6" />
-         <ui:Button Content="Sign in with GitHub" IsEnabled="{Binding CanSignIn}" ToolTip="Sign-in is unavailable while Copilot setup is blocked." Click="OnSignIn" Margin="0,0,8,6" />
+         <ui:Button Content="Sign in with GitHub" IsEnabled="{Binding CanSignIn}" ToolTip="Opens the official Copilot browser sign-in flow when setup checks pass." Click="OnSignIn" Margin="0,0,8,6" />
         <ui:Button Content="Switch account" IsEnabled="{Binding CanSwitchAccount}" ToolTip="This Copilot CLI version has no supported noninteractive sign-out command." Click="OnSwitchAccount" Margin="0,0,8,6" />
         <ui:Button Content="Sign out" IsEnabled="{Binding CanSignOut}" ToolTip="This Copilot CLI version has no supported noninteractive sign-out command." Click="OnSignOut" Margin="0,0,8,6" />
        </WrapPanel>

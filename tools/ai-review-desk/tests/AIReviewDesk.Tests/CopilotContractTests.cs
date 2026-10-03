@@ -22,7 +22,6 @@ public sealed class CopilotContractTests : IDisposable
     [Fact] public void VersionPolicyRejectsOtherVersions() { Assert.True(CopilotContract.IsSupported("1.0.91")); Assert.False(CopilotContract.IsSupported("1.0.92")); Assert.False(CopilotContract.IsSupported(null)); }
     [Fact] public void MissingExecutableDetected() => Assert.Null(CopilotContract.Detect(root));
     [Fact] public void RelativeAndEmptyPathComponentsAreIgnored() => Assert.Null(CopilotContract.Detect(";.;relative"));
-    [Fact] public void UnverifiedIntegrationCannotBeEnabledByAnEmptyProfile() => Assert.False(CopilotContract.ReviewContractVerified);
     [Fact] public void DetectsNativeCliWithoutExecutingShellWrapper() { File.WriteAllText(Path.Combine(root, "copilot.exe"), ""); Assert.Equal(Path.Combine(root, "copilot.exe"), CopilotContract.Detect(root)!.Executable); }
 
     [Fact]
@@ -48,6 +47,14 @@ public sealed class CopilotContractTests : IDisposable
     }
 
     [Fact] public void EmptyProfileAndDefenceInDepthSettingAreSafe() { File.WriteAllText(Path.Combine(Profile, "settings.json"), "{\"disableAllHooks\":true}"); Assert.NotEmpty(CopilotPreflight.Inspect(Profile, Run)); }
+    [Fact]
+    public void StructuralPreflightCannotBypassIncompleteAuthenticatedAcceptance()
+    {
+        File.WriteAllText(Path.Combine(Profile, "config.json"), "{\"loggedInUsers\":[],\"lastLoggedInUser\":null}");
+        Assert.NotEmpty(CopilotPreflight.Inspect(Profile, Run));
+        Assert.False(CopilotContract.ReviewContractVerified);
+        Assert.Contains("could not authenticate", CopilotContract.ReviewExecutionBlockReason);
+    }
     [Fact]
     public void ChildEnvironmentOnlyReadsBenignVariablesAndDropsAuthorityOverrides()
     {
@@ -104,13 +111,14 @@ public sealed class CopilotContractTests : IDisposable
     [InlineData("{\"disableAllHooks\":true,\"statusLine\":{\"command\":\"unsafe\"}}")]
     [InlineData("{\"disableAllHooks\":false}")]
     public void InlineAndUnknownSettingsBlock(string json) { File.WriteAllText(Path.Combine(Profile, "settings.json"), json); Assert.Throws<InvalidOperationException>(() => CopilotPreflight.Inspect(Profile, Run)); }
-    [Fact] public void OpaqueAuthenticationFileBlocksWithoutReadingContents()
+    [Fact] public void UnreadableAuthenticationFileFailsClosed()
     {
         var path = Path.Combine(Profile, "config.json");
         File.WriteAllText(path, "opaque synthetic state");
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        var error = Assert.Throws<InvalidOperationException>(() => CopilotPreflight.Inspect(Profile, Run));
-        Assert.Contains("credential contents were not read", error.Message);
+        var error = Assert.Throws<CopilotConfigBlockedException>(() => CopilotPreflight.Inspect(Profile, Run));
+        Assert.Equal(CopilotConfigBlock.Unreadable, error.Category);
+        Assert.Contains("Credential values were not decoded or returned", error.Message);
     }
     [Fact] public void NonemptyRunDirectoryBlocks() { File.WriteAllText(Path.Combine(Run, ".mcp.json"), "{}"); Assert.Throws<InvalidOperationException>(() => CopilotPreflight.Inspect(Profile, Run)); }
     [Fact] public void RepositoryLanguageServerConfigurationBlocks()

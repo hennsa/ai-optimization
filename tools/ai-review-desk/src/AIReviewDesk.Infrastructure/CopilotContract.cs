@@ -14,9 +14,10 @@ public sealed record CopilotAccountState(bool Available, bool Supported, bool Au
 public static partial class CopilotContract
 {
     public const string SupportedVersion = "1.0.91";
-    // Fail closed even for an empty profile until credential-safe configuration inspection
-    // and a completed authenticated production run have been independently verified.
+    // Structural preflight now passes the dedicated profile, but the first exact production
+    // invocation could not authenticate. Keep acceptance closed; do not drop required flags.
     public static bool ReviewContractVerified => false;
+    public const string ReviewExecutionBlockReason = "Review execution remains blocked: CLI 1.0.91 could not authenticate under the required launch controls. Authenticated review validation is incomplete.";
     public static readonly string[] AllowedTools = ["view", "grep", "glob"];
     public const string DeniedTools = "powershell,create,edit,write,task,skill,list_agents,read_agent,write_agent,run_dynamic_workflow,dynamic_workflows_manage,web_fetch,fetch_copilot_cli_documentation,search_code_subagent,sql,session_store_sql,read_powershell,list_powershell,stop_powershell";
 
