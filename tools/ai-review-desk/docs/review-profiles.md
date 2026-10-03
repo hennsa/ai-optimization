@@ -2,7 +2,9 @@
 
 ## Composition model
 
-Every profile composes one shared reviewer policy with a small profile-specific focus block. Keep common authority, evidence, output-schema, and honesty requirements in one base policy; profiles must not copy or override it. The application supplies repository identity, snapshot metadata, scope, and deterministic diff/context separately from the profile.
+The application composes the Shared Reviewer Policy exactly once, followed by each selected independent profile exactly once in built-in catalogue order, project/repository snapshot, scope, deterministic diff/context, and a separate structured output contract. Profiles are additive; they have no inheritance and never change technical authority, CLI permissions or access rules. A combination such as Security + Database / EF does not insert Standard implementation. Preview and execution use the same `PromptComposer.Compose` path.
+
+The shared policy and full built-in profile instructions are visible read-only in Profiles. Application/project defaults persist profile combinations and migrate older single-profile defaults. Run records retain profile IDs and versions plus the shared-policy version. Review execution remains blocked by the [credential/configuration contract issue](copilot-integration-verification.md).
 
 The shared policy must state that Copilot is an independent reviewer only; may not modify files or execute commands; must use only provided read/search access and supplied context; must not infer unprovided repository state; should report findings only when evidence supports a plausible defect; should not invent findings to fill a quota; may return an empty finding list; should distinguish confirmed, probable, and possible certainty; and must include location/evidence/impact/recommendation where available. It should identify limitations and uncertainty, and not claim tests or tools ran unless evidence says so.
 

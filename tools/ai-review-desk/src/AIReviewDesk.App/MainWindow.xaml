@@ -9,15 +9,13 @@
   <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
   <ui:TitleBar Title="AI Review Desk" ShowMaximize="True" />
   <Grid Grid.Row="1" IsEnabled="{Binding Interactive}">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="252" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+   <Grid.ColumnDefinitions><ColumnDefinition Width="252" MinWidth="190" /><ColumnDefinition Width="5" /><ColumnDefinition Width="*" MinWidth="420" /></Grid.ColumnDefinitions>
    <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0" Padding="16,20,16,16">
     <DockPanel LastChildFill="True">
      <StackPanel DockPanel.Dock="Top">
       <TextBlock Text="YOUR WORKSPACE" FontSize="11" FontWeight="SemiBold" Style="{StaticResource Caption}" Margin="12,0,0,16" />
       <ui:Button Content="＋  Add project" Appearance="Primary" HorizontalAlignment="Stretch" Click="OnAdd" AutomationProperties.AutomationId="AddProject" />
       <StackPanel Margin="0,20,0,12">
-       <ui:Button Content="Projects" Tag="Projects" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,4" />
-       <ui:Button Content="Reviews" Tag="Reviews" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,4" />
        <ui:Button Content="Profiles" Tag="Profiles" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,4" />
        <ui:Button Content="Settings" Tag="Settings" Click="OnNavigate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
       </StackPanel>
@@ -28,14 +26,19 @@
       <ListBox.ItemTemplate><DataTemplate>
        <StackPanel Margin="3,5" ToolTip="{Binding RepositoryPath}">
         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-        <TextBlock Text="{Binding RepositoryPath}" Style="{StaticResource Caption}" FontSize="11" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+        <TextBlock Text="{Binding RepositoryPath}" Style="{StaticResource Caption}" FontSize="11" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,3,0,3" />
+        <StackPanel Orientation="Horizontal">
+         <Button Content="Overview" Tag="Projects" Click="OnProjectArea" Padding="5,2" Margin="0,0,4,0" />
+         <Button Content="Reviews" Tag="Reviews" Click="OnProjectArea" Padding="5,2" />
+        </StackPanel>
        </StackPanel>
       </DataTemplate></ListBox.ItemTemplate>
      </ListBox>
     </DockPanel>
    </Border>
-   <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Margin="32,22,32,28" MaxWidth="1000">
+   <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Background="Transparent" ShowsPreview="False" />
+   <ScrollViewer x:Name="MainContentScroll" Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="32,22,32,28">
      <Border Style="{StaticResource Card}" Visibility="{Binding HasNotice, Converter={StaticResource BoolVisibility}}">
       <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
      </Border>
@@ -71,7 +74,7 @@
            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions>
            <StackPanel Margin="0,0,16,0"><TextBlock Text="CURRENT BRANCH" Style="{StaticResource Caption}" FontSize="11" /><TextBlock Text="{Binding Snapshot.Branch}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,7,0,0" /></StackPanel>
            <StackPanel Grid.Column="1" Margin="0,0,16,0"><TextBlock Text="DEFAULT BASE" Style="{StaticResource Caption}" FontSize="11" /><TextBlock Text="{Binding BaseLabel}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,7,0,0" /></StackPanel>
-           <StackPanel Grid.Column="2"><TextBlock Text="CHANGED FILES" Style="{StaticResource Caption}" FontSize="11" /><TextBlock Text="{Binding Snapshot.ChangedFileCount}" FontSize="26" FontWeight="SemiBold" Margin="0,2,0,0" /></StackPanel>
+           <StackPanel Grid.Column="2"><TextBlock Text="TRACKED CHANGES" Style="{StaticResource Caption}" FontSize="11" /><TextBlock Text="{Binding Snapshot.TrackedChangedCount}" FontSize="26" FontWeight="SemiBold" Margin="0,2,0,0" /><TextBlock Text="{Binding Snapshot.UntrackedCount, StringFormat='Untracked: {0}'}" Style="{StaticResource Caption}" FontSize="11" /></StackPanel>
           </Grid>
          </StackPanel>
         </Border>
@@ -99,28 +102,67 @@
        <Border Style="{StaticResource Card}"><StackPanel>
         <TextBlock Text="Ready for the next step" Style="{StaticResource SectionTitle}" />
         <TextBlock Text="{Binding ProfileLabel, StringFormat='Default profile: {0}'}" Margin="0,0,0,8" />
-        <TextBlock Text="Review execution is coming in the next slice. For now, organize your projects and inspect their local Git state." Style="{StaticResource Caption}" />
+        <TextBlock Text="Choose the project's Reviews area to prepare a scoped, profile based review and inspect its history." Style="{StaticResource Caption}" />
        </StackPanel></Border>
       </StackPanel>
      </StackPanel>
      <StackPanel Visibility="{Binding ShowReviews, Converter={StaticResource BoolVisibility}}">
-      <TextBlock Text="Reviews" FontSize="30" FontWeight="SemiBold" Margin="0,0,0,24" />
-      <Border Style="{StaticResource Card}" Padding="32"><StackPanel>
-       <ui:SymbolIcon Symbol="DocumentSearch24" FontSize="40" HorizontalAlignment="Left" Margin="0,0,0,20" />
-       <TextBlock Text="Your reviews will live here" Style="{StaticResource SectionTitle}" />
-       <TextBlock Text="Independent Copilot reviews and history are planned for the next slice. No reviewer is connected and no review has been run by this application." Style="{StaticResource Caption}" />
-       <ui:Button Content="Go to projects" Tag="Projects" Click="OnNavigate" Margin="0,24,0,0" />
-      </StackPanel></Border>
+      <TextBlock Text="Reviews" FontSize="30" FontWeight="SemiBold" Margin="0,0,0,8" />
+      <TextBlock Text="{Binding Selected.DisplayName}" Style="{StaticResource Caption}" Margin="0,0,0,20" />
+      <TextBlock Text="Choose a review scope" Style="{StaticResource SectionTitle}" />
+      <ComboBox x:Name="ScopePicker" Width="300" HorizontalAlignment="Left" SelectionChanged="OnReviewInputChanged" Margin="0,8,0,16" />
+      <TextBlock Text="Choose changed paths" Style="{StaticResource SectionTitle}" Visibility="{Binding IsSelectedPaths, Converter={StaticResource BoolVisibility}}" />
+      <ListBox x:Name="ChangedPaths" ItemsSource="{Binding ReviewPaths}" SelectionMode="Extended" DisplayMemberPath="Display" Height="150" Visibility="{Binding IsSelectedPaths, Converter={StaticResource BoolVisibility}}" SelectionChanged="OnReviewInputChanged" />
+      <TextBlock Text="Choose one or more review profiles" Style="{StaticResource SectionTitle}" Margin="0,20,0,8" />
+      <ItemsControl ItemsSource="{Binding ProfileChoices}"><ItemsControl.ItemTemplate><DataTemplate>
+       <CheckBox Content="{Binding Profile.Name}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="0,4" />
+      </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+      <WrapPanel Margin="0,18,0,12">
+       <ui:Button Content="Preview final prompt" Click="OnPreviewPrompt" Margin="0,0,8,6" />
+       <ui:Button Content="Start review" Appearance="Primary" IsEnabled="{Binding CanStartReview}" ToolTip="{Binding ReviewAvailabilityMessage}" Click="OnStartReview" Margin="0,0,8,6" />
+       <ui:Button Content="Cancel review" Click="OnCancelReview" Margin="0,0,8,6" />
+      </WrapPanel>
+      <TextBlock Text="{Binding ReviewAvailabilityMessage}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,12" />
+      <TextBlock Text="{Binding ReviewProgress}" Style="{StaticResource Caption}" Margin="0,0,0,12" />
+      <Border Style="{StaticResource Card}" Visibility="{Binding HasReviewResult, Converter={StaticResource BoolVisibility}}">
+       <StackPanel>
+        <TextBlock Text="{Binding ReviewResultTitle}" Style="{StaticResource SectionTitle}" />
+        <TextBlock Text="{Binding ReviewSummary}" TextWrapping="Wrap" Margin="0,8,0,12" />
+        <ItemsControl ItemsSource="{Binding ReviewFindings}"><ItemsControl.ItemTemplate><DataTemplate>
+         <Border Style="{StaticResource Card}"><StackPanel>
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding Severity}" Style="{StaticResource Caption}" />
+          <TextBlock Text="{Binding File}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" Margin="0,6,0,0" />
+          <TextBlock Text="{Binding Impact}" TextWrapping="Wrap" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Margin="0,4,0,0" />
+         </StackPanel></Border>
+        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+        <WrapPanel Margin="0,12,0,0">
+         <ui:Button Content="Copy result" IsEnabled="{Binding CanHandoffLatest}" Click="OnCopyResult" Margin="0,0,8,6" />
+         <ui:Button Content="Copy for ChatGPT" IsEnabled="{Binding CanHandoffLatest}" Click="OnCopyChatGPT" Margin="0,0,8,6" />
+         <ui:Button Content="Copy for Codex" IsEnabled="{Binding CanHandoffLatest}" Click="OnCopyCodex" Margin="0,0,8,6" />
+        </WrapPanel>
+       </StackPanel>
+      </Border>
+      <TextBlock Text="Review history" Style="{StaticResource SectionTitle}" Margin="0,20,0,8" />
+      <ListBox ItemsSource="{Binding ReviewHistory}" DisplayMemberPath="Summary" SelectionChanged="OnHistorySelected" Height="170" />
      </StackPanel>
      <StackPanel Visibility="{Binding ShowProfiles, Converter={StaticResource BoolVisibility}}">
       <TextBlock Text="Review profiles" FontSize="30" FontWeight="SemiBold" />
-      <TextBlock Text="A focused lens for each kind of change. Choose a project's default in Project defaults." Style="{StaticResource Caption}" Margin="0,10,0,24" />
-      <ItemsControl ItemsSource="{Binding Profiles}"><ItemsControl.ItemTemplate><DataTemplate>
-       <Border Style="{StaticResource Card}"><StackPanel>
-        <TextBlock Text="{Binding Name}" Style="{StaticResource SectionTitle}" />
-        <TextBlock Text="{Binding Description}" Style="{StaticResource Caption}" />
-       </StackPanel></Border>
-      </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+      <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="Shared Reviewer Policy" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="Applied to every review" Style="{StaticResource Caption}" Margin="0,0,0,10" />
+       <TextBox Text="{Binding SharedPolicyText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="180" VerticalScrollBarVisibility="Auto" />
+      </StackPanel></Border>
+      <TextBlock Text="Each selected profile adds its own review lens to the shared policy." Style="{StaticResource Caption}" Margin="0,10,0,16" />
+      <ListBox x:Name="ProfileDetails" ItemsSource="{Binding Profiles}" SelectionChanged="OnProfileSelected" DisplayMemberPath="Name" MinHeight="100" />
+      <Border Style="{StaticResource Card}" Visibility="{Binding HasSelectedProfile, Converter={StaticResource BoolVisibility}}"><StackPanel>
+       <TextBlock Text="{Binding SelectedProfile.Name}" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="{Binding SelectedProfile.Description}" Style="{StaticResource Caption}" Margin="0,0,0,12" />
+       <TextBlock Text="Added to the Shared Reviewer Policy when selected for a review." Style="{StaticResource Caption}" Margin="0,0,0,10" />
+       <TextBox Text="{Binding SelectedProfile.Instructions, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="180" VerticalScrollBarVisibility="Auto" />
+      </StackPanel></Border>
       <TextBlock Text="Built-in profiles · Version 1 · Custom editing and cross-repository reviews are not available." Style="{StaticResource Caption}" />
      </StackPanel>
      <StackPanel Visibility="{Binding ShowSettings, Converter={StaticResource BoolVisibility}}">
@@ -138,20 +180,26 @@
       </StackPanel></Border>
       <Border Style="{StaticResource Card}"><StackPanel>
        <TextBlock Text="Review defaults" Style="{StaticResource SectionTitle}" />
-       <TextBlock Text="Default profile for new projects" Margin="0,0,0,8" />
-       <ComboBox x:Name="ProfileSetting" ItemsSource="{Binding Profiles}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding State.DefaultProfileId, Mode=OneWay}" MinWidth="260" HorizontalAlignment="Left" AutomationProperties.Name="Default profile for new projects" />
+       <TextBlock Text="Default review profiles for new projects" Margin="0,0,0,8" />
+       <ItemsControl ItemsSource="{Binding ProfileChoices}"><ItemsControl.ItemTemplate><DataTemplate><CheckBox Content="{Binding Profile.Name}" IsChecked="{Binding IsDefault, Mode=TwoWay}" Margin="0,3" /></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
        <TextBlock Text="Existing projects keep their own defaults." Style="{StaticResource Caption}" Margin="0,10,0,0" />
       </StackPanel></Border>
       <ui:Button Content="Save settings" Appearance="Primary" Click="OnSaveSettings" Margin="0,0,0,24" />
       <TextBlock x:Name="SettingsSaved" Style="{StaticResource Caption}" Margin="0,0,0,12" />
       <Border Style="{StaticResource Card}"><StackPanel>
-       <TextBlock Text="Copilot" Style="{StaticResource SectionTitle}" />
-       <TextBlock Text="Not connected in this preview" FontWeight="SemiBold" Margin="0,0,0,8" />
-       <TextBlock Text="The review runner and sign-in flow will arrive in a later slice. This app does not launch Copilot or access its credentials." Style="{StaticResource Caption}" />
+       <TextBlock Text="Copilot account" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="{Binding AccountStatus}" FontWeight="SemiBold" Margin="0,0,0,8" />
+       <TextBlock Text="{Binding AccountDetail}" Style="{StaticResource Caption}" />
+       <WrapPanel Margin="0,12,0,0">
+        <ui:Button Content="Refresh status" Click="OnRefreshAccount" Margin="0,0,8,6" />
+         <ui:Button Content="Sign in with GitHub" IsEnabled="{Binding CanSignIn}" ToolTip="Sign-in is unavailable while Copilot setup is blocked." Click="OnSignIn" Margin="0,0,8,6" />
+        <ui:Button Content="Switch account" IsEnabled="{Binding CanSwitchAccount}" ToolTip="This Copilot CLI version has no supported noninteractive sign-out command." Click="OnSwitchAccount" Margin="0,0,8,6" />
+        <ui:Button Content="Sign out" IsEnabled="{Binding CanSignOut}" ToolTip="This Copilot CLI version has no supported noninteractive sign-out command." Click="OnSignOut" Margin="0,0,8,6" />
+       </WrapPanel>
       </StackPanel></Border>
       <Border Style="{StaticResource Card}"><StackPanel>
        <TextBlock Text="Data and history" Style="{StaticResource SectionTitle}" />
-       <TextBlock Text="Project registrations and preferences are stored locally. Removing a project only removes its registration; repository files stay in place. Review history is not yet available." Style="{StaticResource Caption}" />
+       <TextBlock Text="Project registrations, review history and preferences are stored locally. Removing a project only removes its registration; repository files stay in place." Style="{StaticResource Caption}" />
        <TextBlock Text="{Binding DataDirectory}" TextWrapping="Wrap" Margin="0,12,0,12" />
        <ui:Button Content="Open data folder" Click="OnOpenData" />
       </StackPanel></Border>
@@ -164,6 +212,12 @@
     </StackPanel>
    </ScrollViewer>
   </Grid>
-  <ProgressBar Grid.Row="2" Height="3" IsIndeterminate="True" Visibility="{Binding Busy, Converter={StaticResource BoolVisibility}}" AutomationProperties.Name="Loading repository state" />
+  <Grid Grid.Row="2">
+   <ProgressBar Height="3" IsIndeterminate="True" Visibility="{Binding Busy, Converter={StaticResource BoolVisibility}}" AutomationProperties.Name="Loading repository state" />
+   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,16,4" Visibility="{Binding IsReviewRunning, Converter={StaticResource BoolVisibility}}">
+    <TextBlock Text="{Binding ReviewProgress}" VerticalAlignment="Center" Margin="0,0,12,0" />
+    <ui:Button Content="Cancel review" Click="OnCancelReview" />
+   </StackPanel>
+  </Grid>
  </Grid>
 </ui:FluentWindow>

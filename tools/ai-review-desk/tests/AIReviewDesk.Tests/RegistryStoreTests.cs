@@ -33,7 +33,28 @@ public sealed class RegistryStoreTests
         Assert.Equal(project.Id, loaded.State.SelectedProjectId);
         Assert.Equal("Dark", loaded.State.Theme);
         Assert.Equal("api", loaded.State.DefaultProfileId);
+        Assert.Equal(new[] { "security" }, loaded.State.Projects.Single().DefaultProfileIds);
+        Assert.Equal(new[] { "api" }, loaded.State.DefaultProfileIds);
         Assert.False(loaded.State.RefreshOnActivate);
+    }
+
+    [Fact]
+    public async Task Roundtrips_additive_defaults_without_inserting_standard()
+    {
+        using var directory = new TemporaryDirectory();
+        var store = new RegistryStore(directory.Path);
+        var project = new ProjectRegistration { RepositoryPath = Path.Combine(directory.Path, "repo"), DefaultProfileIds = ["database", "security", "security"] };
+        await store.SaveAsync(new AppState { Projects = [project], DefaultProfileIds = ["security", "database"] });
+        var loaded = await store.LoadAsync();
+        Assert.Equal(new[] { "security", "database" }, loaded.State.Projects.Single().DefaultProfileIds);
+        Assert.Equal(new[] { "security", "database" }, loaded.State.DefaultProfileIds);
+    }
+
+    [Fact]
+    public async Task Invalid_additive_defaults_do_not_silently_save()
+    {
+        using var directory = new TemporaryDirectory();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new RegistryStore(directory.Path).SaveAsync(new AppState { DefaultProfileIds = [] }));
     }
 
     [Fact]

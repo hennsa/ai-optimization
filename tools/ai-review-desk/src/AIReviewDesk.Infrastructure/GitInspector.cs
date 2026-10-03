@@ -90,6 +90,7 @@ public sealed class GitInspector
             baseWarning = $"Base '{baseRef}' is available, but this repository has no commit yet.";
         }
 
+        var changedPaths = GetWorkingChangedPaths(status);
         var diffSummary = await GetDiffSummaryAsync(root, headSha is not null, counts.Untracked, cancellationToken);
         return new RepositorySnapshot
         {
@@ -105,8 +106,41 @@ public sealed class GitInspector
             UntrackedCount = counts.Untracked,
             ConflictCount = counts.Conflicts,
             ChangedFileCount = counts.Files,
+            TrackedChangedCount = changedPaths.Count(path => !IsUntrackedPath(path, status)),
+            ChangedPaths = changedPaths,
             DiffSummary = diffSummary
         };
+    }
+
+    private static IReadOnlyList<string> GetWorkingChangedPaths(string status)
+    {
+        var entries = status.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var paths = new List<string>();
+        for (var i = 0; i < entries.Length; i++)
+        {
+            var entry = entries[i];
+            if (entry.Length < 4) continue;
+            paths.Add(entry[3..]);
+            if (entry[0] is 'R' or 'C' || entry[1] is 'R' or 'C') i++; // Original rename/copy path is the next field.
+        }
+        return paths
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool IsUntrackedPath(string path, string status)
+    {
+        var entries = status.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < entries.Length; i++)
+        {
+            var entry = entries[i];
+            if (entry.Length < 4) continue;
+            if (entry.StartsWith("?? ", StringComparison.Ordinal) && string.Equals(entry[3..], path, StringComparison.Ordinal))
+                return true;
+            if (entry[0] is 'R' or 'C' || entry[1] is 'R' or 'C') i++;
+        }
+        return false;
     }
 
     private static async Task<string?> ChooseLikelyBaseAsync(

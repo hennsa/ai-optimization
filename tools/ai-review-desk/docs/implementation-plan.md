@@ -2,6 +2,10 @@
 
 This plan separates investigation, product implementation, and verification. Phases 0–2 are complete. Phase 2 verified the model tool boundary with required launch and configuration changes; the [current work item](../work-item.md) and [Phase 2 report](phase2-copilot-cli-verification.md) control the next implementation step.
 
+The next slice has partial implementation and automated/manual evidence, but **Phases 4–7 are not complete**. Inline executable hooks in CLI 1.0.91 `config.json` were independently reproduced. Because this file can also contain authentication state, launch now fails closed without reading it. Resolve that contract before attempting authenticated production review verification or release. See [integration verification](copilot-integration-verification.md).
+
+Continuation: Windows keyring support, fallback schema, prompt-mode controls, auto-login opt-out and machine-policy guards were investigated; 97 tests and Release build pass. Secret-free authentication/configuration separation and complete executable-source coverage are still unresolved. Start review is disabled. Phases 4–7 remain incomplete; do not proceed to real-review acceptance or commit/push by bypassing the gate. See the integration report for actual evidence, source-vs-runtime limits and outstanding acceptance cases.
+
 ## Phase 0 — Design
 
 **Status: complete.** Define the v0.1 product boundary, UX, result and history concepts, architecture direction, profiles, and staged plan. Record assumptions instead of converting unknown CLI behavior into guarantees.

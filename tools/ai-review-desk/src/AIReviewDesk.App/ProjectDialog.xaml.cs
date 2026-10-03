@@ -17,8 +17,8 @@ public partial class ProjectDialog : FluentWindow
         PathInput.Text = project.RepositoryPath;
         BaseInput.ItemsSource = candidates;
         BaseInput.Text = project.DefaultBase ?? "";
-        ProfileInput.ItemsSource = BuiltInProfiles.All;
-        ProfileInput.SelectedValue = project.DefaultProfileId;
+        var defaultIds = (project.DefaultProfileIds ?? [project.DefaultProfileId]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        ProfileInput.ItemsSource = BuiltInProfiles.All.Select(profile => new ProfileChoice(profile, defaultIds.Contains(profile.Id), false)).ToList();
         Heading.Text = adding ? "Add this project" : "Project defaults";
         SaveButton.Content = adding ? "Add project" : "Save defaults";
         Loaded += (_, _) => { NameInput.Focus(); NameInput.SelectAll(); };
@@ -31,8 +31,9 @@ public partial class ProjectDialog : FluentWindow
         if (name.Length == 0) { Validation.Text = "Give the project a display name."; NameInput.Focus(); return; }
         if (baseRef.StartsWith('-') || baseRef.Any(char.IsWhiteSpace) || baseRef.Any(char.IsControl))
         { Validation.Text = "Use a branch or ref without spaces, control characters or a leading dash."; return; }
-        if (ProfileInput.SelectedValue is not string profile) { Validation.Text = "Choose a review profile."; return; }
-        Result = original with { DisplayName = name, DefaultBase = baseRef.Length == 0 ? null : baseRef, DefaultProfileId = profile };
+        var profileIds = (ProfileInput.ItemsSource as IEnumerable<ProfileChoice>)?.Where(choice => choice.IsDefault).Select(choice => choice.Profile.Id).ToList() ?? [];
+        if (profileIds.Count == 0) { Validation.Text = "Choose at least one default review profile."; return; }
+        Result = original with { DisplayName = name, DefaultBase = baseRef.Length == 0 ? null : baseRef, DefaultProfileId = profileIds[0], DefaultProfileIds = profileIds };
         DialogResult = true;
     }
 }

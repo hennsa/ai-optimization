@@ -2,7 +2,13 @@
 
 ## Executable preview
 
-The first desktop slice implements project registration, local Git inspection, built-in profile metadata, and application/project defaults. Copilot execution and review history are not implemented yet.
+The desktop now includes project Overview/Reviews navigation, a draggable workspace splitter, separate tracked/untracked summaries, additive profile defaults, inspectable shared policy and profile instructions, and final prompt preview. Review orchestration, compact history, structured findings and handoff code are present, but the secure Copilot vertical slice is **blocked and not release verified**. See [integration verification and blocker](docs/copilot-integration-verification.md).
+
+The installed CLI 1.0.91 can execute inline hooks from `config.json`, which may also hold authentication state. This app refuses to read credential contents and rejects that opaque file before review launch. The existing authenticated dedicated profile therefore cannot currently run a review. Do not delete or rewrite its authentication state to bypass this check. Account identity/status cannot be obtained through a supported noninteractive command in this version; sign-out and switching are disabled.
+
+The continuation established installed Windows keyring support and plaintext fallback possibilities using help/runtime and synthetic state; Carlo's actual OAuth storage mode was not inspected and remains unproven. A clean home did not inherit sign-in. Secret-free authentication/configuration separation is unresolved. Start review and blocked-profile Sign in remain disabled.
+
+Production now fixes `--no-auto-login`, explicitly sets both supported prompt-mode repository hook/extension switches false, and checks Windows policy/managed-setting paths and registry keys without reading contents. The cleared child environment never queries token variables. Source/discovery probes and 97 passing tests do not replace real review acceptance; see the integration report's continuation section.
 
 On Windows with the .NET 10 SDK and Git installed:
 
@@ -12,9 +18,9 @@ dotnet test tools/ai-review-desk/AIReviewDesk.slnx --no-build -m:1
 dotnet run --project tools/ai-review-desk/src/AIReviewDesk.App --no-build
 ```
 
-Use **Add project** to choose any folder within a Git working tree, confirm the detected root/defaults, and select projects from the sidebar. **Project defaults** changes the display name, base ref and profile. **Remove project** removes only its registration. **Refresh** inspects local state without fetching; Settings can enable refresh when returning to the app. Git details expand to show staged/unstaged/untracked/conflict counts and commit identities. Remote-tracking refs are local observations and may be stale.
+Use **Add project** to choose any folder within a Git working tree, confirm the detected root/defaults, and select projects from the sidebar. Invalid folders receive a contextual Cancel/Choose another dialog. **Project defaults** changes the display name, base ref and selected profiles. Each project exposes Overview and Reviews; Profiles and Settings remain global. **Remove project** removes only its registration. **Refresh** inspects local state without fetching; activation refresh does not disable the workspace. Git details expand to show staged/unstaged/untracked/conflict counts and commit identities. Remote-tracking refs are local observations and may be stale.
 
-The application uses WPF UI 4.3.0 and CommunityToolkit.Mvvm 8.4.2 (MIT; verified compatible with .NET 10). Application state is stored in `%LOCALAPPDATA%\AIReviewDesk\app-state.json`, with a recovery backup. The desktop is single-instance to avoid concurrent registry writers. It does not access the dedicated Copilot profile. Source is divided into App (WPF views/view model), Core (plain data models and built-in profiles), and Infrastructure (Git inspection and registry persistence), with behavior tests under `tests/AIReviewDesk.Tests`.
+The application uses WPF UI 4.3.0 and CommunityToolkit.Mvvm 8.4.2 (MIT; verified compatible with .NET 10). Application state is stored in `%LOCALAPPDATA%\AIReviewDesk\app-state.json`, with a recovery backup; compact run records go under `Reviews`. The desktop is single-instance. Copilot profile inspection checks configuration names and approved settings without opening authentication state. Source is divided into App (WPF), Core (models, prompt composition and handoffs), and Infrastructure (Git, Copilot boundary, transport and persistence), with behavior tests under `tests/AIReviewDesk.Tests`.
 
 The following sections remain the broader v0.1 design; capabilities beyond this executable preview are planned work.
 

@@ -160,7 +160,8 @@ public sealed class RegistryStore
                 DisplayName = string.IsNullOrWhiteSpace(project.DisplayName) ? Path.GetFileName(fullPath) : project.DisplayName.Trim(),
                 RepositoryPath = fullPath,
                 DefaultBase = string.IsNullOrWhiteSpace(project.DefaultBase) ? null : project.DefaultBase.Trim(),
-                DefaultProfileId = profileId
+                DefaultProfileId = profileId,
+                DefaultProfileIds = NormalizeProfiles(project.DefaultProfileIds, profileId, rejectDuplicatePaths, corrections)
             });
         }
 
@@ -174,6 +175,7 @@ public sealed class RegistryStore
             corrections.Add("An unknown theme was reset to System.");
         if (defaultProfile != state.DefaultProfileId && !rejectDuplicatePaths)
             corrections.Add("An unknown default review profile was reset to Standard implementation.");
+        var defaultProfiles = NormalizeProfiles(state.DefaultProfileIds, defaultProfile, rejectDuplicatePaths, corrections);
         warning = corrections.Count == 0 ? null : string.Join(" ", corrections.Distinct(StringComparer.Ordinal));
         return new AppState
         {
@@ -182,8 +184,21 @@ public sealed class RegistryStore
             SelectedProjectId = selected,
             Theme = theme,
             DefaultProfileId = defaultProfile,
+            DefaultProfileIds = defaultProfiles,
             RefreshOnActivate = state.RefreshOnActivate
         };
+    }
+
+    private static List<string> NormalizeProfiles(List<string>? ids, string legacy, bool saving, List<string> corrections)
+    {
+        if (ids == null) return [legacy];
+        try { return PromptComposer.NormalizeProfileIds(ids).ToList(); }
+        catch (ArgumentException)
+        {
+            if (saving) throw new InvalidOperationException("Choose one or more known default review profiles.");
+            corrections.Add("Invalid default review profiles were reset to Standard implementation.");
+            return ["standard"];
+        }
     }
 
     private static bool IsRecoverable(Exception ex) => ex is IOException or UnauthorizedAccessException or
