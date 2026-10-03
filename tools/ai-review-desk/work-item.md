@@ -6,6 +6,9 @@ Implement the accepted v0.1 design in core/Git/Copilot integration slices, then 
 
 ## Current state
 
+- The Review History and Results slice is delivered: each project's Reviews opens newest-first History, historical runs open focused read-only details, and New review remains one click away. Finding selection, full detail, severity/certainty/category filters and title/file search support accepted results. Zero findings and Failed/Cancelled/Stale/Unsupported states are explicit; only Completed results expose the shared independent handoffs.
+- Review again reuses configuration only, clears unavailable profiles/paths with an explanation and prepares a fresh snapshot through the normal preview/run flow. Record schema 2 adds captured profile names; existing history defaults safely and is preserved. Project removal retains stored history without reassociating it with a newly registered project. The accepted secure runner is changed only to capture the additive record metadata.
+
 - Phase 0 (design) is complete.
 - Phase 1 authenticated proof is complete for Copilot CLI 1.0.91. Its effective tool manifest was restricted to `view`, `grep`, and `glob`; adversarial fixture fingerprints remained unchanged. See the report for probe-by-probe limits.
 - Phase 2 independent verification is complete: **VERIFIED WITH REQUIRED DESIGN CHANGES**. The model tool restriction held, but profile hooks and MCP startup can execute outside that manifest and Phase 1's launch allowed sibling temp reads. See the [Phase 2 report](docs/phase2-copilot-cli-verification.md).

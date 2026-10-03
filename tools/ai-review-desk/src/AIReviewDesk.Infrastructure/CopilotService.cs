@@ -65,10 +65,12 @@ public sealed class CopilotService
         var profiles = BuiltInProfiles.All.Where(p => ids.Contains(p.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var record = new ReviewRecord
         {
+            SchemaVersion = 2,
             ProjectId = input.Project.Id, ProjectName = input.Project.DisplayName, RepositoryPath = input.Project.RepositoryPath,
             Branch = input.Snapshot.Branch, HeadSha = input.Snapshot.HeadSha, BaseRef = input.Snapshot.BaseRef, MergeBaseSha = input.Snapshot.MergeBaseSha,
             Scope = input.Scope, SelectedPaths = input.SelectedPaths, ProfileIds = profiles.Select(p => p.Id).ToArray(),
             ProfileVersions = profiles.ToDictionary(p => p.Id, p => p.Version), SharedPolicyVersion = SharedReviewerPolicy.Version, AppVersion = "0.1.0",
+            ProfileNames = profiles.ToDictionary(p => p.Id, p => p.Name),
             ChangedFileCount = input.Snapshot.ChangedFileCount, FingerprintBefore = input.Fingerprint,
             DiffHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input.Context))), Status = ReviewStatus.Failed
         };

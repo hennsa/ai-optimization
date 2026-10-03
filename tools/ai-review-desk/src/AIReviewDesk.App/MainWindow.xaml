@@ -109,8 +109,13 @@
      <StackPanel Visibility="{Binding ShowReviews, Converter={StaticResource BoolVisibility}}">
       <TextBlock Text="Reviews" FontSize="30" FontWeight="SemiBold" Margin="0,0,0,8" />
       <TextBlock Text="{Binding Selected.DisplayName}" Style="{StaticResource Caption}" Margin="0,0,0,20" />
+      <WrapPanel Margin="0,0,0,16">
+       <ui:Button Content="History" Click="OnShowHistory" Margin="0,0,8,6" />
+       <ui:Button Content="New review" Appearance="Primary" Click="OnNewReview" Margin="0,0,8,6" />
+      </WrapPanel>
+      <StackPanel Visibility="{Binding ShowNewReview, Converter={StaticResource BoolVisibility}}">
       <TextBlock Text="Choose a review scope" Style="{StaticResource SectionTitle}" />
-      <ComboBox x:Name="ScopePicker" Width="300" HorizontalAlignment="Left" SelectionChanged="OnReviewInputChanged" Margin="0,8,0,16" />
+      <ComboBox x:Name="ScopePicker" SelectedValue="{Binding Scope, Mode=OneWay}" Width="300" HorizontalAlignment="Left" SelectionChanged="OnReviewInputChanged" Margin="0,8,0,16" />
       <TextBlock Text="Choose changed paths" Style="{StaticResource SectionTitle}" Visibility="{Binding IsSelectedPaths, Converter={StaticResource BoolVisibility}}" />
       <ListBox x:Name="ChangedPaths" ItemsSource="{Binding ReviewPaths}" SelectionMode="Extended" DisplayMemberPath="Display" Height="150" Visibility="{Binding IsSelectedPaths, Converter={StaticResource BoolVisibility}}" SelectionChanged="OnReviewInputChanged" />
       <TextBlock Text="Choose one or more review profiles" Style="{StaticResource SectionTitle}" Margin="0,20,0,8" />
@@ -122,30 +127,79 @@
        <ui:Button Content="Start review" Appearance="Primary" IsEnabled="{Binding Interactive}" Click="OnStartReview" Margin="0,0,8,6" />
        <ui:Button Content="Cancel review" IsEnabled="{Binding IsReviewRunning}" Click="OnCancelReview" Margin="0,0,8,6" />
       </WrapPanel>
+      </StackPanel>
       <TextBlock Text="{Binding ReviewProgress}" Style="{StaticResource Caption}" Margin="0,0,0,12" />
-      <Border Style="{StaticResource Card}" Visibility="{Binding HasReviewResult, Converter={StaticResource BoolVisibility}}">
+      <StackPanel Visibility="{Binding ShowHistoryList, Converter={StaticResource BoolVisibility}}">
+      <TextBlock Text="Recent reviews" Style="{StaticResource SectionTitle}" Margin="0,0,0,8" />
+      <TextBlock Text="No reviews yet. Choose New review to prepare an independent review for this project." TextWrapping="Wrap" Margin="0,8,0,16" Visibility="{Binding EmptyHistory, Converter={StaticResource BoolVisibility}}" />
+      <ListBox x:Name="HistoryList" ItemsSource="{Binding ReviewHistory}" SelectionChanged="OnHistorySelected" MaxHeight="500" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" Margin="0,0,0,16">
+       <ListBox.ItemTemplate><DataTemplate>
+        <StackPanel Margin="4,6">
+         <DockPanel><TextBlock Text="{Binding Details.TimeLabel}" DockPanel.Dock="Right" Margin="12,0,0,0" Style="{StaticResource Caption}" /><TextBlock Text="{Binding Details.StatusLabel}" FontWeight="SemiBold" TextWrapping="Wrap" /></DockPanel>
+         <TextBlock Text="{Binding Details.ContextLabel}" TextWrapping="Wrap" Margin="0,3,0,0" />
+         <TextBlock Text="{Binding Details.ProfilesLabel}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,3,0,0" />
+        </StackPanel>
+       </DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+      </StackPanel>
+      <Border Style="{StaticResource Card}" Visibility="{Binding ShowReviewDetail, Converter={StaticResource BoolVisibility}}">
        <StackPanel>
-        <TextBlock Text="{Binding ReviewResultTitle}" Style="{StaticResource SectionTitle}" />
-        <TextBlock Text="{Binding ReviewSummary}" TextWrapping="Wrap" Margin="0,8,0,12" />
-        <ItemsControl ItemsSource="{Binding ReviewFindings}"><ItemsControl.ItemTemplate><DataTemplate>
-         <Border Style="{StaticResource Card}"><StackPanel>
-          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
-          <TextBlock Text="{Binding Severity}" Style="{StaticResource Caption}" />
-          <TextBlock Text="{Binding File}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,4,0,0" />
-          <TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" Margin="0,6,0,0" />
-          <TextBlock Text="{Binding Impact}" TextWrapping="Wrap" Margin="0,4,0,0" />
-          <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Margin="0,4,0,0" />
-         </StackPanel></Border>
-        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-        <WrapPanel Margin="0,12,0,0">
-         <ui:Button Content="Copy result" IsEnabled="{Binding CanHandoffLatest}" Click="OnCopyResult" Margin="0,0,8,6" />
-         <ui:Button Content="Copy for ChatGPT" IsEnabled="{Binding CanHandoffLatest}" Click="OnCopyChatGPT" Margin="0,0,8,6" />
-         <ui:Button Content="Copy for Codex" IsEnabled="{Binding CanHandoffLatest}" Click="OnCopyCodex" Margin="0,0,8,6" />
+        <TextBlock Text="{Binding Details.StatusLabel}" Style="{StaticResource SectionTitle}" />
+        <TextBlock Text="{Binding Details.SeveritySummary}" FontWeight="SemiBold" Margin="0,4,0,0" />
+        <TextBlock Text="{Binding Details.ContextSummary}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0" />
+        <TextBlock Text="{Binding Details.ProfilesLabel}" TextWrapping="Wrap" Margin="0,4,0,8" />
+        <TextBlock Text="{Binding Details.Outcome}" TextWrapping="Wrap" Margin="0,8,0,8" />
+        <TextBlock Text="{Binding Details.ResultSummary}" TextWrapping="Wrap" Margin="0,0,0,12" />
+        <WrapPanel Margin="0,0,0,12">
+         <ui:Button Content="Review again" Click="OnReviewAgain" Margin="0,0,8,6" />
+         <WrapPanel Visibility="{Binding CanHandoffLatest, Converter={StaticResource BoolVisibility}}">
+          <ui:Button Content="Copy result" Click="OnCopyResult" Margin="0,0,8,6" />
+          <ui:Button Content="Copy for ChatGPT" Click="OnCopyChatGPT" Margin="0,0,8,6" />
+          <ui:Button Content="Copy for Codex" Click="OnCopyCodex" Margin="0,0,8,6" />
+         </WrapPanel>
         </WrapPanel>
+        <Expander Header="Captured repository and review details" HorizontalContentAlignment="Stretch" Margin="0,0,0,12">
+         <TextBox Text="{Binding Details.SnapshotText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" AcceptsReturn="True" Margin="8" />
+        </Expander>
+        <Expander Header="Review explanation" Visibility="{Binding Details.HasDiagnostic, Converter={StaticResource BoolVisibility}}" HorizontalContentAlignment="Stretch" Margin="0,0,0,12">
+         <TextBlock Text="{Binding Details.Diagnostic}" TextWrapping="Wrap" Margin="8" />
+        </Expander>
+        <StackPanel Visibility="{Binding Details.HasFindings, Converter={StaticResource BoolVisibility}}">
+         <WrapPanel>
+          <StackPanel Margin="0,0,10,8"><TextBlock Text="Severity" Style="{StaticResource Caption}" /><ComboBox ItemsSource="{Binding SeverityOptions}" SelectedItem="{Binding SeverityFilter}" MinWidth="95" AutomationProperties.Name="Severity filter" /></StackPanel>
+          <StackPanel Margin="0,0,10,8"><TextBlock Text="Certainty" Style="{StaticResource Caption}" /><ComboBox ItemsSource="{Binding CertaintyOptions}" SelectedItem="{Binding CertaintyFilter}" MinWidth="110" AutomationProperties.Name="Certainty filter" /></StackPanel>
+          <StackPanel Margin="0,0,10,8"><TextBlock Text="Category" Style="{StaticResource Caption}" /><ComboBox ItemsSource="{Binding CategoryOptions}" SelectedItem="{Binding CategoryFilter}" MinWidth="110" MaxWidth="200" AutomationProperties.Name="Category filter" /></StackPanel>
+          <StackPanel Margin="0,0,10,8"><TextBlock Text="Search title or file" Style="{StaticResource Caption}" /><TextBox Text="{Binding FindingSearch, UpdateSourceTrigger=PropertyChanged}" Width="190" AutomationProperties.Name="Search findings" /></StackPanel>
+          <ui:Button Content="Clear filters" Click="OnClearFilters" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+         </WrapPanel>
+         <TextBlock Text="{Binding FilterCount}" Style="{StaticResource Caption}" Margin="0,4,0,12" />
+         <TextBlock Text="No findings match these filters." Visibility="{Binding NoFilterMatches, Converter={StaticResource BoolVisibility}}" Margin="0,8,0,16" />
+         <Grid MinHeight="160" MaxHeight="500">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+          <ListBox ItemsSource="{Binding ReviewFindings}" SelectedItem="{Binding SelectedFinding}" Visibility="{Binding ShowFindingList, Converter={StaticResource BoolVisibility}}" Width="220" Margin="0,0,16,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+           <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="4,6">
+            <TextBlock Text="{Binding Classification}" FontSize="11" Style="{StaticResource Caption}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,4" />
+            <TextBlock Text="{Binding Location}" FontSize="11" TextWrapping="Wrap" />
+           </StackPanel></DataTemplate></ListBox.ItemTemplate>
+          </ListBox>
+          <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Visibility="{Binding HasSelectedFinding, Converter={StaticResource BoolVisibility}}">
+           <StackPanel Margin="0,0,12,8">
+            <TextBlock Text="{Binding SelectedFinding.Classification}" Style="{StaticResource Caption}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding SelectedFinding.Title}" FontWeight="SemiBold" FontSize="18" TextWrapping="Wrap" Margin="0,6,0,8" />
+            <TextBox Text="{Binding SelectedFinding.Location, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas" />
+            <Button Content="Copy location" Click="OnCopyLocation" HorizontalAlignment="Left" Padding="6,3" Margin="0,4,0,12" />
+            <TextBlock Text="Evidence" FontWeight="SemiBold" /><TextBox Text="{Binding SelectedFinding.Finding.Evidence, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,4,0,14" />
+            <TextBlock Text="Impact" FontWeight="SemiBold" /><TextBox Text="{Binding SelectedFinding.Finding.Impact, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,4,0,14" />
+            <TextBlock Text="Recommendation" FontWeight="SemiBold" /><TextBox Text="{Binding SelectedFinding.Finding.Recommendation, Mode=OneWay}" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap" AcceptsReturn="True" Margin="0,4,0,8" />
+            <TextBlock Text="{Binding SelectedFinding.Finding.Id, StringFormat='Finding ID: {0}'}" Style="{StaticResource Caption}" FontSize="11" />
+           </StackPanel>
+          </ScrollViewer>
+         </Grid>
+        </StackPanel>
+        <Expander Header="Reviewer limitations" Visibility="{Binding Details.HasLimitations, Converter={StaticResource BoolVisibility}}" HorizontalContentAlignment="Stretch" Margin="0,12,0,0"><TextBlock Text="{Binding Details.Limitations}" TextWrapping="Wrap" Margin="8" /></Expander>
        </StackPanel>
       </Border>
-      <TextBlock Text="Review history" Style="{StaticResource SectionTitle}" Margin="0,20,0,8" />
-      <ListBox ItemsSource="{Binding ReviewHistory}" DisplayMemberPath="Summary" SelectionChanged="OnHistorySelected" Height="170" />
      </StackPanel>
      <StackPanel Visibility="{Binding ShowProfiles, Converter={StaticResource BoolVisibility}}">
       <TextBlock Text="Review profiles" FontSize="30" FontWeight="SemiBold" />

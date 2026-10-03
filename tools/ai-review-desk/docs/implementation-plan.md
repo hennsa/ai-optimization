@@ -6,6 +6,8 @@ The current vertical slice implements the core/Git, constrained Copilot runner, 
 
 Real production-runner evidence covers zero findings, a deliberate ownership defect, Security + Database / EF, live process-tree cancellation and mutation during a review. Actual 1.0.91 tool completion events are correlated by toolCallId; UTF-8 transport is explicit. See the latest [integration verification](copilot-integration-verification.md) for final automated/manual evidence and limitations. Earlier blocked-pass sections are historical; they do not define the revised saved-account requirement. Version compatibility remains pinned to Windows CLI 1.0.91, and broader release/distribution work remains separate.
 
+The Review History and Results slice is implemented: project-scoped newest-first history, focused read-only detail, structured finding selection/filter/search, explicit non-completed and zero-findings states, shared historical handoffs and fresh-context setup reuse. Additive record schema 2 snapshots profile names; legacy records default safely without rewriting app-state or inventing historical instructions. The existing compact record cap and 100-run display limit remain, without deleting older history or introducing retention settings. Production runner permissions, authentication and protocol validation remain unchanged. Acceptance evidence is appended to the existing integration report.
+
 ## Phase 0 — Design
 
 **Status: complete.** Define the v0.1 product boundary, UX, result and history concepts, architecture direction, profiles, and staged plan. Record assumptions instead of converting unknown CLI behavior into guarantees.

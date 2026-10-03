@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using AIReviewDesk.Core;
 using AIReviewDesk.Infrastructure;
@@ -8,10 +9,10 @@ namespace AIReviewDesk.App;
 
 public sealed class DeskViewModel : ObservableObject
 {
-    private readonly RegistryStore store = new();
+    private readonly RegistryStore store;
     private readonly GitInspector git = new();
-    private readonly CopilotService copilot = new();
-    private readonly ReviewHistoryStore history = new();
+    private readonly CopilotService copilot;
+    private readonly ReviewHistoryStore history;
     private AppState state = new();
     private ProjectRegistration? selected;
     private RepositorySnapshot? snapshot;
@@ -26,16 +27,45 @@ public sealed class DeskViewModel : ObservableObject
     private string reviewProgress = "", accountStatus = "Checking Copilot…", accountDetail = "";
     private bool activationRefreshRunning;
     private bool canSignIn;
+    private bool newReview;
+    private bool historyList = true;
+    private string severityFilter = "All", certaintyFilter = "All", categoryFilter = "All", findingSearch = "";
+    private FindingItem? selectedFinding;
+
+    public DeskViewModel(string? dataDirectory = null)
+    {
+        store = new RegistryStore(dataDirectory);
+        history = new ReviewHistoryStore(dataDirectory);
+        copilot = new CopilotService(dataDirectory);
+    }
 
     public ObservableCollection<ProjectRegistration> Projects { get; } = [];
     public IReadOnlyList<ReviewProfile> Profiles => BuiltInProfiles.All;
     public ObservableCollection<ProfileChoice> ProfileChoices { get; } = [];
     public ObservableCollection<ReviewPathChoice> ReviewPaths { get; } = [];
     public ObservableCollection<ReviewHistoryItem> ReviewHistory { get; } = [];
-    public ObservableCollection<ReviewFinding> ReviewFindings { get; } = [];
+    public ObservableCollection<FindingItem> ReviewFindings { get; } = [];
+    public IReadOnlyList<string> SeverityOptions { get; } = ["All", "critical", "high", "medium", "low", "info"];
+    public IReadOnlyList<string> CertaintyOptions { get; } = ["All", "confirmed", "probable", "possible"];
+    public ObservableCollection<string> CategoryOptions { get; } = ["All"];
+    public string SeverityFilter { get => severityFilter; set { if (SetProperty(ref severityFilter, value)) FilterFindings(); } }
+    public string CertaintyFilter { get => certaintyFilter; set { if (SetProperty(ref certaintyFilter, value)) FilterFindings(); } }
+    public string CategoryFilter { get => categoryFilter; set { if (SetProperty(ref categoryFilter, value)) FilterFindings(); } }
+    public string FindingSearch { get => findingSearch; set { if (SetProperty(ref findingSearch, value)) FilterFindings(); } }
+    public FindingItem? SelectedFinding { get => selectedFinding; set { SetProperty(ref selectedFinding, value); OnPropertyChanged(nameof(HasSelectedFinding)); } }
+    public bool HasSelectedFinding => SelectedFinding != null;
+    public bool NoFilterMatches => Details?.HasFindings == true && ReviewFindings.Count == 0;
+    public bool ShowFindingList => Details?.FindingsCount > 1;
+    public string FilterCount => $"Showing {ReviewFindings.Count} of {Details?.FindingsCount ?? 0} findings";
+    public bool ShowNewReview => newReview;
+    public bool ShowHistory => !newReview;
+    public bool ShowHistoryList => !newReview && historyList;
+    public bool ShowReviewDetail => !newReview && !historyList && HasReviewResult;
+    public bool EmptyHistory => ReviewHistory.Count == 0;
+    public ReviewDetails? Details => HasReviewResult ? new(LatestReview!) : null;
     public string DataDirectory => store.DirectoryPath;
     public AppState State => state;
-    public ProjectRegistration? Selected { get => selected; private set { SetProperty(ref selected, value); NotifyView(); OnPropertyChanged(nameof(HasReviewResult)); } }
+    public ProjectRegistration? Selected { get => selected; private set { if (SetProperty(ref selected, value)) ResetReviewWorkspace(); NotifyView(); } }
     public RepositorySnapshot? Snapshot { get => snapshot; private set { SetProperty(ref snapshot, value); NotifyView(); } }
     public string Area { get => area; set { SetProperty(ref area, value); NotifyView(); } }
     public string Notice { get => notice; private set { SetProperty(ref notice, value); OnPropertyChanged(nameof(HasNotice)); } }
@@ -57,11 +87,7 @@ public sealed class DeskViewModel : ObservableObject
     public string ReviewProgress { get => reviewProgress; private set => SetProperty(ref reviewProgress, value); }
     public bool HasReviewResult => LatestReview != null && LatestReview.ProjectId == Selected?.Id;
     public bool CanHandoffLatest => LatestReview is { Status: ReviewStatus.Completed } record && record.ProjectId == Selected?.Id;
-    public ReviewRecord? LatestReview { get => latestReview; private set { SetProperty(ref latestReview, value); OnPropertyChanged(nameof(HasReviewResult)); OnPropertyChanged(nameof(CanHandoffLatest)); OnPropertyChanged(nameof(ReviewResultTitle)); OnPropertyChanged(nameof(ReviewSummary)); } }
-    public string ReviewResultTitle => LatestReview == null ? "" : $"{LatestReview.Status} · {LatestReview.Result.Findings.Count} finding(s)";
-    public string ReviewSummary => LatestReview is { } record
-        ? string.IsNullOrWhiteSpace(record.Result.Summary) ? record.Diagnostic ?? "" : record.Result.Summary
-        : "";
+    public ReviewRecord? LatestReview { get => latestReview; private set { SetProperty(ref latestReview, value); OnPropertyChanged(nameof(HasReviewResult)); OnPropertyChanged(nameof(CanHandoffLatest)); OnPropertyChanged(nameof(Details)); OnPropertyChanged(nameof(ShowFindingList)); } }
     public string AccountStatus { get => accountStatus; private set => SetProperty(ref accountStatus, value); }
     public string AccountDetail { get => accountDetail; private set => SetProperty(ref accountDetail, value); }
     public bool CanSignOut => false;
@@ -110,7 +136,7 @@ public sealed class DeskViewModel : ObservableObject
         ready = true;
         RebuildProfileChoices(state.DefaultProfileIds ?? [state.DefaultProfileId]);
         OnPropertyChanged(nameof(Interactive));
-        if (Selected != null) await RefreshAsync();
+        if (Selected != null) { await LoadHistoryAsync(Selected.Id); await RefreshAsync(); }
         await RefreshAccountAsync();
     }
 
@@ -120,6 +146,7 @@ public sealed class DeskViewModel : ObservableObject
         Selected = project;
         Area = "Projects";
         LoadProjectProfiles(project);
+        await LoadHistoryAsync(project.Id);
         await RefreshAsync();
     }
 
@@ -180,6 +207,7 @@ public sealed class DeskViewModel : ObservableObject
         Selected = project;
         Area = "Projects";
         LoadProjectProfiles(project);
+        await LoadHistoryAsync(project.Id);
         await RefreshAsync();
     }
 
@@ -193,7 +221,7 @@ public sealed class DeskViewModel : ObservableObject
         Selected = Projects.FirstOrDefault();
         LoadProjectProfiles(Selected);
         Snapshot = null;
-        if (Selected != null) await RefreshAsync();
+        if (Selected != null) { await LoadHistoryAsync(Selected.Id); await RefreshAsync(); }
     }
 
     public Task SaveSettingsAsync(string theme, bool refresh) =>
@@ -270,6 +298,7 @@ public sealed class DeskViewModel : ObservableObject
         Error = "";
         LatestReview = null;
         ReviewFindings.Clear();
+        SelectedFinding = null;
         if (Selected == null) { Error = "Choose a project before starting a review."; return; }
         reviewCancellation = new CancellationTokenSource();
         OnPropertyChanged(nameof(IsReviewRunning));
@@ -291,9 +320,7 @@ public sealed class DeskViewModel : ObservableObject
             _ = PromptComposer.Compose(input, profileIds);
             var progress = new Progress<string>(message => ReviewProgress = message);
             var record = await copilot.RunAsync(input, profileIds, progress, cancellationToken);
-            LatestReview = record;
-            if (record.Status == ReviewStatus.Completed)
-                foreach (var finding in record.Result.Findings) ReviewFindings.Add(finding);
+            ShowHistoryRecord(record);
             await history.SaveAsync(record);
             await LoadHistoryAsync(record.ProjectId);
             ReviewProgress = record.Status switch
@@ -307,11 +334,14 @@ public sealed class DeskViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            await SavePreparationOutcomeAsync(ReviewStatus.Cancelled, "Review cancelled during context preparation. No accepted result is available.", forScope, selectedPaths);
             ReviewProgress = "Review cancelled.";
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Error = ex.Message;
+            if (LatestReview == null)
+                await SavePreparationOutcomeAsync(ReviewStatus.Failed, "Review context could not be prepared. Check the current repository and scope before trying again.", forScope, selectedPaths);
             ReviewProgress = "Review failed.";
         }
         finally
@@ -328,17 +358,93 @@ public sealed class DeskViewModel : ObservableObject
 
     public async Task LoadHistoryAsync(Guid projectId)
     {
+        var records = await history.LoadAsync(projectId);
+        if (Selected?.Id != projectId) return;
         ReviewHistory.Clear();
-        foreach (var record in await history.LoadAsync(projectId)) ReviewHistory.Add(new ReviewHistoryItem(record));
+        foreach (var record in records) ReviewHistory.Add(new ReviewHistoryItem(record));
+        OnPropertyChanged(nameof(EmptyHistory));
+    }
+
+    private async Task SavePreparationOutcomeAsync(ReviewStatus status, string diagnostic, ReviewScope forScope, IReadOnlyList<string> paths)
+    {
+        if (Selected == null) return;
+        var profiles = Profiles.Where(p => SelectedProfileIds().Contains(p.Id)).ToArray();
+        var record = new ReviewRecord
+        {
+            SchemaVersion = 2, ProjectId = Selected.Id, ProjectName = Selected.DisplayName, RepositoryPath = Selected.RepositoryPath,
+            Scope = forScope, SelectedPaths = forScope == ReviewScope.SelectedPaths ? paths : [],
+            Branch = Snapshot?.Branch ?? "", HeadSha = Snapshot?.HeadSha, BaseRef = Snapshot?.BaseRef, MergeBaseSha = Snapshot?.MergeBaseSha,
+            ChangedFileCount = Snapshot?.ChangedFileCount ?? 0, ProfileIds = profiles.Select(p => p.Id).ToArray(),
+            ProfileNames = profiles.ToDictionary(p => p.Id, p => p.Name), ProfileVersions = profiles.ToDictionary(p => p.Id, p => p.Version),
+            AppVersion = "0.1.0", Status = status, Diagnostic = diagnostic
+        };
+        ShowHistoryRecord(record);
+        try { await history.SaveAsync(record); await LoadHistoryAsync(record.ProjectId); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException) { Error = "Review history could not be saved. " + ex.Message; }
     }
 
     public void ShowHistoryRecord(ReviewRecord record)
     {
         if (record.ProjectId != Selected?.Id) return;
         LatestReview = record;
+        CategoryOptions.Clear(); CategoryOptions.Add("All");
+        foreach (var category in new ReviewDetails(record).Findings.Select(f => f.Category).Distinct().Order()) CategoryOptions.Add(category);
+        // Replacing the options can clear WPF's SelectedItem binding. Reset after rebuilding.
+        severityFilter = certaintyFilter = categoryFilter = "All";
+        findingSearch = "";
+        foreach (var property in new[] { nameof(SeverityFilter), nameof(CertaintyFilter), nameof(CategoryFilter), nameof(FindingSearch) }) OnPropertyChanged(property);
+        SelectedFinding = null;
+        FilterFindings();
+        newReview = false; historyList = false;
+        NotifyReviewNavigation();
+    }
+
+    private void FilterFindings()
+    {
+        var previous = SelectedFinding?.Finding;
         ReviewFindings.Clear();
-        if (record.Status == ReviewStatus.Completed)
-            foreach (var finding in record.Result.Findings) ReviewFindings.Add(finding);
+        foreach (var finding in FindingFilter.Apply(Details?.Findings ?? [], severityFilter, certaintyFilter, categoryFilter, findingSearch))
+            ReviewFindings.Add(new FindingItem(finding, LatestReview?.RepositoryPath ?? ""));
+        SelectedFinding = ReviewFindings.FirstOrDefault(f => f.Finding == previous) ?? ReviewFindings.FirstOrDefault();
+        OnPropertyChanged(nameof(NoFilterMatches)); OnPropertyChanged(nameof(FilterCount));
+    }
+
+    public void ShowNewReviewForm()
+    {
+        newReview = true;
+        NotifyReviewNavigation();
+    }
+    public void ShowReviewHistory()
+    {
+        newReview = false;
+        historyList = true;
+        NotifyReviewNavigation();
+    }
+    private void NotifyReviewNavigation()
+    {
+        foreach (var name in new[] { nameof(ShowNewReview), nameof(ShowHistory), nameof(ShowHistoryList), nameof(ShowReviewDetail) }) OnPropertyChanged(name);
+    }
+    private void ResetReviewWorkspace()
+    {
+        LatestReview = null; ReviewHistory.Clear(); ReviewFindings.Clear(); SelectedFinding = null;
+        ReviewPaths.Clear(); ReviewProgress = ""; Scope = ReviewScope.WorkingChanges;
+        InvalidateReviewInput(); ShowReviewHistory(); OnPropertyChanged(nameof(EmptyHistory));
+    }
+
+    public async Task<ReusedReviewSetup?> UsePreviousSetupAsync()
+    {
+        if (LatestReview == null || LatestReview.ProjectId != Selected?.Id || IsReviewRunning) return null;
+        // Only reusable configuration crosses this boundary. Git data and prompt are always fresh.
+        InvalidateReviewInput();
+        await RefreshAsync();
+        var targetScope = LatestReview.Scope == ReviewScope.BranchVsBase && Snapshot?.BaseRef == null ? ReviewScope.WorkingChanges : LatestReview.Scope;
+        await LoadChangedPathsAsync(targetScope);
+        var setup = ReusedReviewSetup.From(LatestReview, ReviewPaths.Select(p => p.Path).ToArray(), Snapshot?.BaseRef != null);
+        Scope = setup.Scope;
+        foreach (var choice in ProfileChoices) choice.IsSelected = setup.ProfileIds.Contains(choice.Profile.Id);
+        ReviewProgress = setup.Message;
+        ShowNewReviewForm();
+        return setup;
     }
 
     public async Task RefreshAccountAsync() => SetAccount(await copilot.GetAccountAsync());
@@ -402,7 +508,8 @@ public sealed record ReviewPathChoice(string Path)
 
 public sealed record ReviewHistoryItem(ReviewRecord Record)
 {
-    public string Summary => $"{Record.TimestampUtc.LocalDateTime:g} · {Record.Status} · {Record.Result.Findings.Count} finding(s) · {Record.Result.Summary}";
+    public ReviewDetails Details => new(Record);
+    public override string ToString() => $"{Details.TimeLabel} · {Details.StatusLabel} · {Details.ContextLabel} · {Details.ProfilesLabel}";
 }
 
 public sealed record ScopeChoice(ReviewScope Scope, string Name);

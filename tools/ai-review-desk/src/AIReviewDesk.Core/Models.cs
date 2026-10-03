@@ -124,6 +124,7 @@ public sealed record ReviewResult
 /// <summary>Compact run metadata and parsed results. Full repository diffs are intentionally excluded.</summary>
 public sealed record ReviewRecord
 {
+    public int SchemaVersion { get; init; } = 1;
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid ProjectId { get; init; }
     public string ProjectName { get; init; } = string.Empty;
@@ -136,6 +137,7 @@ public sealed record ReviewRecord
     public IReadOnlyList<string> SelectedPaths { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ProfileIds { get; init; } = Array.Empty<string>();
     public IReadOnlyDictionary<string, string> ProfileVersions { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string> ProfileNames { get; init; } = new Dictionary<string, string>();
     public string SharedPolicyVersion { get; init; } = SharedReviewerPolicy.Version;
     public DateTimeOffset TimestampUtc { get; init; } = DateTimeOffset.UtcNow;
     public string AppVersion { get; init; } = string.Empty;

@@ -20,7 +20,7 @@ public partial class MainWindow : FluentWindow
         DataContext = ViewModel;
         ViewModel.PropertyChanged += (_, change) =>
         {
-            if (change.PropertyName == nameof(DeskViewModel.Area)) MainContentScroll.ScrollToTop();
+            if (change.PropertyName is nameof(DeskViewModel.Area) or nameof(DeskViewModel.ShowNewReview) or nameof(DeskViewModel.ShowReviewDetail)) MainContentScroll.ScrollToTop();
         };
     }
 
@@ -34,7 +34,9 @@ public partial class MainWindow : FluentWindow
         };
         ScopePicker.DisplayMemberPath = nameof(ScopeChoice.Name);
         ScopePicker.SelectedValuePath = nameof(ScopeChoice.Scope);
-        ScopePicker.SelectedValue = ReviewScope.WorkingChanges;
+        // Items/value paths are configured after XAML binding initialization.
+        // Restore the current value without replacing the binding used by setup reuse.
+        ScopePicker.SetCurrentValue(ComboBox.SelectedValueProperty, ViewModel.Scope);
         ProfileDetails.SelectedIndex = 0;
         await ViewModel.ExecuteAsync(ViewModel.InitializeAsync);
         ApplyTheme();
@@ -57,11 +59,14 @@ public partial class MainWindow : FluentWindow
         if (ViewModel.Selected?.Id != project.Id)
             await ViewModel.ExecuteAsync(() => ViewModel.SelectAsync(project));
         if (area == "Reviews")
+        {
             await ViewModel.ExecuteAsync(async () =>
             {
-                await ViewModel.LoadChangedPathsAsync(CurrentScope());
                 await ViewModel.LoadHistoryAsync(project.Id);
             });
+            ViewModel.ShowReviewHistory();
+            HistoryList.SelectedItem = null;
+        }
         ViewModel.Area = area;
     }
 
@@ -86,6 +91,36 @@ public partial class MainWindow : FluentWindow
     private void OnHistorySelected(object sender, SelectionChangedEventArgs e)
     {
         if (sender is ListBox { SelectedItem: ReviewHistoryItem item }) ViewModel.ShowHistoryRecord(item.Record);
+    }
+
+    private void OnNewReview(object sender, RoutedEventArgs e) => ViewModel.ShowNewReviewForm();
+    private void OnShowHistory(object sender, RoutedEventArgs e)
+    {
+        HistoryList.SelectedItem = null;
+        ViewModel.ShowReviewHistory();
+    }
+    private async void OnReviewAgain(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.ExecuteAsync(async () =>
+        {
+            var setup = await ViewModel.UsePreviousSetupAsync();
+            if (setup == null) return;
+            ChangedPaths.SelectedItems.Clear();
+            foreach (var path in ViewModel.ReviewPaths.Where(p => setup.SelectedPaths.Contains(p.Path))) ChangedPaths.SelectedItems.Add(path);
+        });
+    }
+
+    private void OnClearFilters(object sender, RoutedEventArgs e)
+    {
+        ViewModel.SeverityFilter = ViewModel.CertaintyFilter = ViewModel.CategoryFilter = "All";
+        ViewModel.FindingSearch = "";
+    }
+
+    private void OnCopyLocation(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedFinding?.Finding.File == null) return;
+        try { Clipboard.SetText(ViewModel.SelectedFinding.Location); ViewModel.SetReviewProgress("Copied finding location."); }
+        catch (Exception ex) { ViewModel.SetError(ex.Message); }
     }
 
     private async void OnPreviewPrompt(object sender, RoutedEventArgs e)

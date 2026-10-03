@@ -321,3 +321,35 @@ Remaining limits: Windows CLI 1.0.91 only; exact account identity and Vault targ
 **Delegation: none.** Security-sensitive work and acceptance were performed by the primary; primary model/effort unavailable (not authoritatively exposed).
 
 A final permitted-view diagnostic against the rebuilt validator emitted the observed named start/deltas and ID-only completion. The exact-tool/MCP/terminal/correlation checks passed through to structured-result parsing; the model then returned markdown-fenced JSON, which the unchanged strict result parser rejected. This additional diagnostic is **not** an accepted review. It confirms malformed model formatting remains invalid; no markdown-stripping or validator relaxation was added. The production/WPF completed cases above supplied valid JSON.
+
+## Review History and Results acceptance — 2026-10-03
+
+The next product slice adds project-scoped History/New review navigation, read-only historical detail, severity counts, captured scope/profile/snapshot metadata, finding list/detail selection, severity/certainty/category filters, title/file search and copyable locations. Single-finding results use the full detail width. Zero findings is an explicit completed state; Failed, Cancelled, Stale and Unsupported/blocked records have no accepted findings or completed-result handoffs. Historical copies use the existing three formatters and retain downstream independent assessment/verification requirements.
+
+Review again opens configuration without launching Copilot. Only available profile IDs and paths in the current changed set are reused; cleared selections are explained, and an unavailable branch base falls back to Working changes. Actual WPF prompt preview included a new fixture marker added after the historical run, with the shared policy and Security profile each exactly once. The subsequent WPF run used the freshly prepared context.
+
+### Production and persisted-history evidence
+
+All real cases used the accepted `CopilotService.RunAsync` production path, dedicated saved profile and Windows CLI **1.0.91**, on a disposable ownership-check repository. No account/configuration probe or security bypass was added.
+
+| Case | Observed result |
+| --- | --- |
+| Comment-only change | Completed, **0 findings**, matching fingerprints; compact history persisted. |
+| Deliberate unconditional `CanRead` authorization bypass | Completed, **1 finding**, matching fingerprints; compact history persisted. |
+| Restarted store | Both records reopened with the captured result; Result, ChatGPT and Codex handoff texts matched the original formats exactly. |
+| Actual Release app restart | Both real records appeared newest-first and reopened with the correct zero/populated outcomes. No Copilot invocation was needed to display them. |
+| WPF Review again → fresh preview → Start review | Completed, **1 finding**, matching fingerprints; newest history entry appeared after switching projects and back. |
+
+Release WPF was exercised through Computer Use: project Reviews navigation, history/detail/new-review navigation, captured metadata, zero-findings reopening, real single-finding detail, all three historical clipboard copies (verified with fixed-string checks), reuse and final prompt preview/run. Explicitly labelled synthetic persisted fixtures covered multiple-finding selection, selection preservation under filtering, combined severity/certainty/category filtering, no-match state, title search and Failed/Cancelled/Stale reopening with no completed handoffs. These UI fixtures are not claimed as new real failure/cancellation/stale execution evidence; the accepted milestone's live controls remain applicable. Resizing to **960 × 660** wrapped filters and preserved reachable, readable evidence/impact/recommendation; maximized layout also worked. A second disposable project showed empty history, and switching back showed the first project's seven records including the new WPF result.
+
+Manual testing found and fixed category selection clearing during option rebuild, scope-picker initialization after binding setup, and excessive history chrome above findings. The final product opens a focused detail from History and keeps History/New review accessible. Desktop capture initially failed with a monitor error and then recovered; subsequent visual checks used actual screenshots.
+
+### Compact state and verification
+
+Review record schema **2** adds captured profile names; schema-1 records default without rewriting and display saved IDs/versions when names were not captured. Existing app-state schema, projects and settings are unchanged. Malformed/future review records are preserved but skipped; missing acceptance/scope metadata cannot become a completed review, and non-completed partial findings are discarded on reopen as well as save. Completed findings reuse existing structured-result validation. The **512 KiB per-record** cap and **100 latest valid runs per-project display** limit remain; older compact files are preserved. Registration removal preserves history without assigning old records to a new registration. No historical prompts are reconstructed, and raw protocol, terminal output and full diffs remain outside the history model.
+
+Final full Release suite: **185 passed, 0 failed, 0 skipped**, including **39 added business/persistence/view-model cases**. Release solution build passed with **0 errors** and the existing **one NU1900** vulnerability-feed warning (also observed with authorized network restore). Tests cover project/order isolation, all reopening outcomes, historical names/versions, counts, persisted handoffs, setup reuse/fresh input, invalid path/profile/base handling, filters/selection, compact persistence, legacy/defaulting/malformed/future shapes, partial-result rejection, preparation failure and project removal.
+
+The original app registry and recovery backup were restored byte-for-byte. Only seven task-owned acceptance records and the checked disposable fixture/harness directory were removed. No credentials or raw streams were copied/persisted for acceptance. The runner diff consists only of schema/profile-name capture; constrained invocation, configuration scanning, environment isolation, authentication, fingerprinting, cancellation and JSONL/tool/MCP/terminal validation are unchanged. No security contract was weakened or reinvestigated. Final whitespace/diff/secret/artifact and source-control checks are recorded in the delivery response.
+
+**Delegation: none.** Primary model/effort unavailable (not authoritatively exposed).
