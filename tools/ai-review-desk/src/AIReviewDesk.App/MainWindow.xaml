@@ -119,10 +119,9 @@
       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
       <WrapPanel Margin="0,18,0,12">
        <ui:Button Content="Preview final prompt" Click="OnPreviewPrompt" Margin="0,0,8,6" />
-       <ui:Button Content="Start review" Appearance="Primary" IsEnabled="{Binding CanStartReview}" ToolTip="{Binding ReviewAvailabilityMessage}" Click="OnStartReview" Margin="0,0,8,6" />
+       <ui:Button Content="Start review" Appearance="Primary" IsEnabled="{Binding Interactive}" Click="OnStartReview" Margin="0,0,8,6" />
        <ui:Button Content="Cancel review" IsEnabled="{Binding IsReviewRunning}" Click="OnCancelReview" Margin="0,0,8,6" />
       </WrapPanel>
-      <TextBlock Text="{Binding ReviewAvailabilityMessage}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,12" />
       <TextBlock Text="{Binding ReviewProgress}" Style="{StaticResource Caption}" Margin="0,0,0,12" />
       <Border Style="{StaticResource Card}" Visibility="{Binding HasReviewResult, Converter={StaticResource BoolVisibility}}">
        <StackPanel>

@@ -45,6 +45,12 @@ public static class CopilotProcess
 
     private static async Task ConsumeAsync(StreamReader reader, Action<string> onLine)
     {
+        try { await ConsumeUtf8Async(reader, onLine); }
+        catch (System.Text.DecoderFallbackException) { throw new InvalidOperationException("Copilot emitted invalid UTF-8."); }
+    }
+
+    private static async Task ConsumeUtf8Async(StreamReader reader, Action<string> onLine)
+    {
         // Bound both individual frames and overall transport; avoid ReadLine allocating unbounded attacker output.
         var buffer = new char[4096];
         var line = new System.Text.StringBuilder();

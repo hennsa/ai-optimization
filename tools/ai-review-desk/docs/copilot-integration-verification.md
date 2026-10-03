@@ -250,3 +250,74 @@ No tests were added because no runtime/environment fix was justified. Existing e
 Only this bounded evidence and current-state documentation is committed on the feature branch; main is not merged/pushed. Synthetic helper/native-context fixture trees are removed after resolving/checking the exact cleanup root; no synthetic executable configuration was added to the real profile. Exact commit/remote/clean-tree status is in the completion response.
 
 **Delegation: none.** The primary performed the comparison directly; model/effort unavailable (not authoritatively exposed).
+
+## Saved-account contract and production acceptance — 2026-10-03
+
+This section supersedes the preceding blocked authentication requirement. Carlo explicitly allowed hydration of the saved account belonging to the dedicated profile and withdrew the requirement to include `--no-auto-login`. The application still must prevent unintended environment-token, provider, GitHub CLI and unrelated-profile authentication; it never extracts or injects tokens.
+
+### Focused authentication controls
+
+The installed Windows CLI remains **1.0.91**, using the existing fully qualified Node/npm loader and native package. All established configuration, policy, tool, MCP, instruction, remote, update, temp and prompt-mode switches remained in force. The controlled child environment was cleared and constructed, with **System32-only PATH**, no PATHEXT, no token/provider/Node overrides, and the existing dedicated home. No benign runtime variable was added to repair authentication.
+
+| Control | Observed result |
+| --- | --- |
+| Dedicated real profile, no opt-out, System32-only PATH | Exit 0; 15 JSONL frames; terminal, exact `{view,grep,glob}`, disabled MCP and structured-result validation passed; zero findings. |
+| Fresh isolated home with only app-owned `disableAllHooks=true`, same environment | Exit 1; `No authentication information found`; zero stdout frames; no valid review or login challenge. |
+| Dedicated real profile, failing synthetic gh helper + System32, test-only PATHEXT `.EXE` | Helper invoked and returned 1; review authenticated and validator passed with zero findings. Real gh was unavailable. |
+| Fresh isolated home, same failing helper | Helper invoked but could not provide auth; exit 1/no auth/no frames/no login challenge. |
+
+The empty home did not inherit another profile or obtain a GitHub CLI account. No automatic browser/device OAuth was observed: the prompt command returned its clean auth failure, without challenge output or an account-flow window. No real gh account, login, logout, switch or credential-returning API was used. The first real-profile attempt within the restricted development process sandbox exited without a stream; running the identical check with authorized network access succeeded. That execution-environment limitation did not justify broadening the production child environment.
+
+Authentication is **dedicated-profile-selected saved authentication**, established by these positive/negative controls. The accepted scanner reports account metadata and no plaintext `authTokens` field for this profile. Windows keyring support and plaintext fallback possibilities are established from prior version-specific runtime evidence; the exact Vault target/backend for this account was not directly observed and remains an inference, not a claimed credential-store inspection. Any understood sensitive value in supported config structure is skipped in-place; the CLI alone consumes it. Unknown/executable structures still block. This pass did not rewrite/copy the real profile or reopen the accepted scanner contract.
+
+### Final launch and fallback isolation
+
+`--no-auto-login` is omitted. The temporary unverified-authentication gate is removed. Each run still checks supported Windows CLI **1.0.91**, the accepted structural profile scanner, machine policy, repository contributions, empty app-owned cwd and a stable pre-launch configuration fingerprint.
+
+Parent values are queried only for `SystemRoot`, `WINDIR`, `TEMP`, `TMP`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `USERDOMAIN`, `USERNAME`, `HOMEDRIVE`, `HOMEPATH`, `COMSPEC`, `ProgramData`. PATH is constructed from `Environment.SystemDirectory`; parent PATH/PATHEXT are not queried or inherited. Fixed child values are dedicated `COPILOT_HOME`, transient `COPILOT_CACHE_HOME`, `COPILOT_AUTO_UPDATE=false`, `USE_TGREP=false`, `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=false`, `GITHUB_COPILOT_PROMPT_MODE_EXTENSIONS=false`.
+
+Authentication/provider/authority overrides, including `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, GitHub host/config overrides, provider API keys/commands/config, SDK token variables, NODE_OPTIONS and unrelated parent variables, are excluded without querying their values. Regression callbacks prove that exclusion.
+
+`CopilotGitHubCliIsolation` checks the cwd, Windows/System32/legacy System directories, selected executable application directory and the npm loader's fully qualified native-child application directory. Presence of `gh`, `gh.exe`, `gh.com`, `gh.cmd`, `gh.bat` or `gh.ps1` blocks launch; inaccessible/linked/ambiguous search directories fail closed. No real gh can be discovered through parent PATH. Same-user concurrent external changes and administrator-controlled runtime binaries remain the previously stated desktop trust assumptions; this is not an OS sandbox.
+
+The invocation still supplies the repository separately with `--add-dir`, requires `--disallow-temp-dir`, both exact `view,grep,glob` tool flags and all existing explicit denials. Built-in MCP, custom instructions, remote, remote export, ask-user, auto-update, eager PowerShell resolution and experimental features remain disabled. No arbitrary user flags or shell authority were added.
+
+Executable configuration remains accounted for by the accepted checks: mixed config structure (hooks/commands/MCP/plugins/extensions/agents/skills/LSP/providers/permissions/unknown fields), narrow settings, profile contribution directories and unknown files, cwd/ancestor sources, repository LSP/extensions/plugins/Copilot/Claude settings, explicit false prompt-mode repository hooks/extensions, and Windows policy/managed-setting files and HKLM views. Present or ambiguous machine policy remains blocked; policy contents and unrelated registry data are not read. The exact inventory and scanner sentinel evidence in earlier sections remain applicable.
+
+### Real protocol integration corrections
+
+The first full production-service review authenticated, exited successfully and preserved the repository, but the existing validator rejected ambiguous tool evidence. A focused permitted `view` probe established the actual 1.0.91 shape: argument deltas and execution starts contain `toolCallId` and `toolName`; completion contains `toolCallId` without `toolName`. The validator now accepts completion only for a matching, previously allowed start; it rejects missing/unmatched/duplicate/reused IDs, changing names and unfinished executions. Exact manifest/MCP/terminal/result requirements are unchanged. Missing names are not blindly ignored.
+
+WPF finding display exposed non-ASCII punctuation decoded through the Windows default console encoding. All Copilot stdin/stdout/stderr pipes are now explicitly UTF-8; malformed output throws a fixed safe error without inner exception or raw bytes. Controlled process tests prove both a Unicode string and malformed-byte rejection.
+
+### Actual production-runner acceptance
+
+All cases below used the application **CopilotService.RunAsync**, its production transport/arguments/environment/preflight/validator and Git context on a disposable repository. No diagnostic flag bypass or alternate account source was used.
+
+| Case | Production result |
+| --- | --- |
+| Comment-only change to an ownership comparison | **Completed**, zero findings, matching before/after fingerprints; all three handoffs available. This is the first accepted production review. |
+| Deliberate `CanRead(caller, owner) => true` regression | **Completed**, one structured finding, unchanged repository, all handoffs available. |
+| Security + Database / EF on that regression | **Completed**, one finding; profiles recorded in deterministic `security,database` order; shared policy and each selected profile exactly once. Preview uses the same composition path and input as execution. |
+| External cancellation after observing a real native Copilot process | **Cancelled**, zero retained findings, no normal handoffs; native process handle exited and production transport awaited wrapper exit. The synthetic tree-termination test also remains passing. |
+| Fixture mutation after observing a real native Copilot process | **Stale**, differing fingerprints, zero retained findings, no normal handoffs. |
+
+Completed results imply successful process exit, parseable real JSONL, terminal event, exact effective tool manifest, both disabled built-in MCPs, no unexpected tool/MCP/startup evidence, structured findings and stable fingerprints. Cancellation and stale results are invalid independently of partial model output. Raw streams/stderr were not saved; reports contain fixed categories/counts only.
+
+### WPF acceptance and final verification
+
+The actual Release WPF app was controlled with the Computer Use skill. One-click Add Project opened the folder picker; a disposable Git root was confirmed and selected. Project Overview/Reviews navigation worked. Working Changes scope, Security + Database / EF selection, prompt preview and Start Review worked. The preview edit value contained the shared policy, Security and Database / EF each once, in catalogue order; the existing preview/prepared-input/runner composition path stayed shared.
+
+A real WPF review completed with one rendered ownership finding, matching fingerprints and enabled handoffs. Copy Result, Copy for ChatGPT and Copy for Codex placed the synthetic review and correct distinct assessment instructions on the clipboard; fixed-string checks verified content without logging the copied text. After rebuilding the UTF-8 correction, a genuine comment-only WPF review completed with zero findings. Two attempted Cancel clicks on very short zero-findings reviews arrived after completion and therefore did not count as cancellation acceptance. A bounded larger synthetic case was cancelled through the UI during preparation, showing Cancelled/zero retained findings and all copy buttons disabled. The separate production-runner live cancellation above proves wrapper/native termination during actual review.
+
+For WPF during-run stale acceptance, the UI showed Reviewing and a live Copilot process was observed before appending a harmless comment to the disposable source. The final UI showed Stale, explained differing repository state/discarded findings, and disabled all normal handoffs. An empty synthetic `.github/lsp.json` then caused the expected explicit preflight failure, zero findings and disabled copy buttons before model execution. Settings showed supported CLI 1.0.91 with unavailable identity/status, official Sign In available, and unsupported Switch/Sign Out disabled. No account flow was launched for testing. No restyling or unrelated profile behavior was changed. Earlier splitter/resizing/invalid-folder/profile-detail evidence was retained, not repeated as new verification.
+
+Final full Release tests: **146 passed, 0 failed/skipped** (23 seconds). Release solution build: **passed, 0 errors**, with the existing **one NU1900** warning because the NuGet vulnerability feed was unavailable. Added coverage is bounded: 8 executable-isolation cases, 4 real-protocol correlation failures and 2 actual UTF-8 process cases; existing argument/environment tests were refined without querying auth overrides. Empty-home/failing-gh authentication are live controls, not mocked unit-test authentication claims.
+
+Diff/whitespace and introduced credential-pattern checks passed; changes are entirely within `tools/ai-review-desk`. The original app registry and recovery backup were restored and only this task's synthetic project history was removed. No unsafe synthetic hook/MCP/plugin configuration was put in the real profile. Final scanner/preflight/search isolation still passed the dedicated profile with credential-field false/account-metadata true. Task-owned probe/helper/fixture trees are removed after checking exact resolved cleanup targets. Exact final source-control hashes and remote equality are reported in the completion response.
+
+Remaining limits: Windows CLI 1.0.91 only; exact account identity and Vault target are not noninteractively established; official sign-in remains untested here to avoid altering the real account; unsupported sign-out/switch remain disabled; same-user/admin runtime integrity is a desktop trust assumption. There is no automatic browser/device login for an unauthenticated review. Saved dedicated-account hydration is allowed, while unintended fallback sources remain blocked.
+
+**Delegation: none.** Security-sensitive work and acceptance were performed by the primary; primary model/effort unavailable (not authoritatively exposed).
+
+A final permitted-view diagnostic against the rebuilt validator emitted the observed named start/deltas and ID-only completion. The exact-tool/MCP/terminal/correlation checks passed through to structured-result parsing; the model then returned markdown-fenced JSON, which the unchanged strict result parser rejected. This additional diagnostic is **not** an accepted review. It confirms malformed model formatting remains invalid; no markdown-stripping or validator relaxation was added. The production/WPF completed cases above supplied valid JSON.

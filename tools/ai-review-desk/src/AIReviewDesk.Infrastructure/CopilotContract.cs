@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace AIReviewDesk.Infrastructure;
@@ -14,10 +15,6 @@ public sealed record CopilotAccountState(bool Available, bool Supported, bool Au
 public static partial class CopilotContract
 {
     public const string SupportedVersion = "1.0.91";
-    // Structural preflight now passes the dedicated profile, but the first exact production
-    // invocation could not authenticate. Keep acceptance closed; do not drop required flags.
-    public static bool ReviewContractVerified => false;
-    public const string ReviewExecutionBlockReason = "Review execution remains blocked: CLI 1.0.91 could not authenticate under the required launch controls. Authenticated review validation is incomplete.";
     public static readonly string[] AllowedTools = ["view", "grep", "glob"];
     public const string DeniedTools = "powershell,create,edit,write,task,skill,list_agents,read_agent,write_agent,run_dynamic_workflow,dynamic_workflows_manage,web_fetch,fetch_copilot_cli_documentation,search_code_subagent,sql,session_store_sql,read_powershell,list_powershell,stop_powershell";
 
@@ -43,13 +40,16 @@ public static partial class CopilotContract
         var info = new ProcessStartInfo(installation.Executable)
         {
             WorkingDirectory = Path.GetFullPath(cwd), UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardInputEncoding = new UTF8Encoding(false),
+            StandardOutputEncoding = new UTF8Encoding(false, true), StandardErrorEncoding = new UTF8Encoding(false, true)
         };
         foreach (var arg in installation.PrefixArguments.Concat(arguments)) info.ArgumentList.Add(arg);
         info.Environment.Clear();
         readOperatingSystemVariable ??= Environment.GetEnvironmentVariable;
-        foreach (var key in new[] { "SystemRoot", "WINDIR", "PATH", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "USERDOMAIN", "USERNAME", "HOMEDRIVE", "HOMEPATH", "COMSPEC", "ProgramData" })
+        foreach (var key in new[] { "SystemRoot", "WINDIR", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "USERDOMAIN", "USERNAME", "HOMEDRIVE", "HOMEPATH", "COMSPEC", "ProgramData" })
             if (readOperatingSystemVariable(key) is { Length: > 0 } value) info.Environment[key] = value;
+        info.Environment["PATH"] = CopilotGitHubCliIsolation.ChildPath;
         info.Environment["COPILOT_HOME"] = Path.GetFullPath(profile);
         info.Environment["COPILOT_CACHE_HOME"] = Path.GetFullPath(cache);
         info.Environment["COPILOT_AUTO_UPDATE"] = "false";
@@ -67,7 +67,7 @@ public static partial class CopilotContract
         "--add-dir", Path.GetFullPath(repository), "--disallow-temp-dir",
         "--available-tools", "view,grep,glob", "--allow-tool", "view,grep,glob", "--deny-tool", DeniedTools,
         "--disable-builtin-mcps", "--no-custom-instructions", "--no-remote", "--no-remote-export",
-        "--no-ask-user", "--no-auto-update", "--no-auto-login", "--no-eager-powershell-resolution", "--no-experimental",
+        "--no-ask-user", "--no-auto-update", "--no-eager-powershell-resolution", "--no-experimental",
         "--output-format", "json", "--stream", "on", "--log-level", "none", "--log-dir", transientLogs
     ];
 }

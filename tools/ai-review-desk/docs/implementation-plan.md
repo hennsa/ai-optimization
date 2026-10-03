@@ -2,11 +2,9 @@
 
 This plan separates investigation, product implementation, and verification. Phases 0–2 are complete. Phase 2 verified the model tool boundary with required launch and configuration changes; the [current work item](../work-item.md) and [Phase 2 report](phase2-copilot-cli-verification.md) control the next implementation step.
 
-The next slice has partial implementation and automated/manual evidence, but **Phases 4–7 are not complete**. Inline executable hooks in CLI 1.0.91 `config.json` were independently reproduced. A narrow structural scanner now resolves the mixed-file inspection blocker under the refined rule that credential values must never be materialized or exposed. The real profile passes preflight; the first actual production review failed to authenticate. See [integration verification](copilot-integration-verification.md).
+The current vertical slice implements the core/Git, constrained Copilot runner, history/handoffs and WPF product. The structural scanner resolves mixed authentication/executable configuration without materializing credentials. The refined authentication contract allows dedicated saved-account hydration and excludes environment/provider/GitHub CLI/other-profile fallback; `--no-auto-login` is deliberately omitted. Production uses a System32-only PATH with executable-search guards, preserving all other security controls.
 
-Focused completion: existing implementation checkpointed as `93ad239` on `codex/ai-review-desk-secure-review`; structural inspection and sentinel coverage added. All 132 tests and Release build pass. No required flag was weakened after the authentication failure. Start review remains disabled; authenticated protocol/zero-findings/findings/cancellation/stale/manual acceptance is outstanding. Useful verified progress is committed on the feature branch; main must not receive it as completed secure review functionality.
-
-Focused runtime continuation: matched real-profile checks authenticate with the existing environment when ordinary automatic login is enabled, and fail when only `--no-auto-login` is restored. Extra benign Windows context, native executable selection and explicit `--config-dir` did not repair the required invocation. Keep the allowlist and gate unchanged. Resolve this version-specific account-selection/opt-out compatibility before production acceptance; diagnostic runs without the required flag are not accepted reviews. See the final runtime comparison in the integration report.
+Real production-runner evidence covers zero findings, a deliberate ownership defect, Security + Database / EF, live process-tree cancellation and mutation during a review. Actual 1.0.91 tool completion events are correlated by toolCallId; UTF-8 transport is explicit. See the latest [integration verification](copilot-integration-verification.md) for final automated/manual evidence and limitations. Earlier blocked-pass sections are historical; they do not define the revised saved-account requirement. Version compatibility remains pinned to Windows CLI 1.0.91, and broader release/distribution work remains separate.
 
 ## Phase 0 — Design
 
@@ -53,7 +51,7 @@ Verify project add/switch/defaults; all scopes and path narrowing; no-fetch base
 1. Phase 0 provides this design set.
 2. Phase 1 produced a reproducible authenticated CLI proof and handed it to independent verification.
 3. Phase 2 independently challenged the proof and accepted a revised contract with required design changes.
-4. Phases 3–6 produce the MVP in vertical slices under new implementation work items.
+4. Phases 3–6 produce the MVP in vertical slices tracked by the existing work item.
 5. Phase 7 provides end-to-end and security acceptance evidence before release.
 
 Cross-repository execution, PR management, custom profiles, web research, and other listed non-goals require a separate future scope decision; they are not implied by completion of the MVP.

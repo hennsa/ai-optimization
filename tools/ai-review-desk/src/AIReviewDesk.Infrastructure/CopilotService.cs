@@ -19,6 +19,8 @@ public sealed class CopilotService
         var run = CreateRunDirectory();
         try
         {
+            try { CopilotGitHubCliIsolation.Inspect(installation, run); }
+            catch (InvalidOperationException ex) { return new(true, false, false, null, null, ex.Message, ConfigurationBlocked: true); }
             var text = new StringBuilder();
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(15));
@@ -44,6 +46,7 @@ public sealed class CopilotService
         try
         {
             CopilotPreflight.Inspect(Profile, run);
+            CopilotGitHubCliIsolation.Inspect(installation, run);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(5));
             var result = await CopilotProcess.RunAsync(CopilotContract.StartInfo(installation, run, Profile, Path.Combine(run, "cache"), ["login", "--web-flow"]), null, _ => { }, timeout.Token);
@@ -83,12 +86,11 @@ public sealed class CopilotService
             if (!account.Available || !account.Supported) return record with { Status = ReviewStatus.Unsupported, Diagnostic = account.Message };
             run = CreateRunDirectory();
             var configuration = CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath);
-            if (!CopilotContract.ReviewContractVerified)
-                return record with { Status = ReviewStatus.Unsupported, Diagnostic = CopilotContract.ReviewExecutionBlockReason };
             var info = CopilotContract.StartInfo(CopilotContract.Detect()!, run, Profile, Path.Combine(run, "cache"), CopilotContract.ReviewArguments(input.Project.RepositoryPath, Path.Combine(run, "logs")));
             progress?.Report("Starting Copilot");
             // Recheck immediately before Process.Start. Same-user external writes remain a documented desktop trust assumption.
             if (CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath) != configuration) throw new InvalidOperationException("Copilot configuration changed during launch preparation.");
+            CopilotGitHubCliIsolation.Inspect(CopilotContract.Detect()!, run);
             var validator = new CopilotStreamValidator();
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(3));

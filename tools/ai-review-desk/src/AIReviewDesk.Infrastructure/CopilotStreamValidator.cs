@@ -8,6 +8,9 @@ public sealed class CopilotStreamValidator
 {
     private readonly HashSet<string> allowed = new(CopilotContract.AllowedTools, StringComparer.Ordinal);
     private readonly HashSet<string> disabledMcps = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> toolCalls = new(StringComparer.Ordinal);
+    private readonly HashSet<string> runningTools = new(StringComparer.Ordinal);
+    private readonly HashSet<string> completedTools = new(StringComparer.Ordinal);
     private bool manifestSeen, terminalSeen;
     private string? response;
     private string? invalid;
@@ -43,8 +46,30 @@ public sealed class CopilotStreamValidator
                     disabledMcps.Add(name);
                 }
             }
-            if (type is "tool.execution_start" or "tool.execution_complete" or "assistant.tool_call_delta")
-                ValidateTool(Text(data, "toolName"));
+            if (type is "tool.execution_start" or "assistant.tool_call_delta")
+            {
+                var name = Text(data, "toolName");
+                ValidateTool(name);
+                var id = Text(data, "toolCallId");
+                if (string.IsNullOrEmpty(id) || completedTools.Contains(id))
+                    throw new InvalidOperationException("Tool call identity is missing or reused.");
+                if (toolCalls.TryGetValue(id, out var previous) && previous != name)
+                    throw new InvalidOperationException("Tool call identity changed its tool name.");
+                toolCalls[id] = name!;
+                if (type == "tool.execution_start" && !runningTools.Add(id))
+                    throw new InvalidOperationException("Duplicate tool execution start was observed.");
+            }
+            if (type == "tool.execution_complete")
+            {
+                // Real 1.0.91 completion events carry toolCallId, but omit toolName.
+                // Accept only a completion correlated to a previously validated execution start.
+                var id = Text(data, "toolCallId");
+                if (id == null || !runningTools.Remove(id))
+                    throw new InvalidOperationException("Tool completion has no matching execution start.");
+                if (Text(data, "toolName") is { } name && name != toolCalls[id])
+                    throw new InvalidOperationException("Tool completion changed its tool name.");
+                completedTools.Add(id);
+            }
             if (type == "assistant.message")
             {
                 var requests = Property(data, "toolRequests");
@@ -80,6 +105,7 @@ public sealed class CopilotStreamValidator
         if (exitCode != 0) throw new InvalidOperationException("Copilot did not complete successfully.");
         if (invalid != null) throw new InvalidOperationException(invalid);
         if (!terminalSeen) throw new InvalidOperationException("Copilot returned no terminal result.");
+        if (runningTools.Count != 0) throw new InvalidOperationException("Copilot returned incomplete tool execution evidence.");
         if (!manifestSeen) throw new InvalidOperationException("The completed run has no usable tool manifest.");
         if (!disabledMcps.SetEquals(["github-mcp-server", "githubiq"])) throw new InvalidOperationException("Disabled built-in MCP evidence is missing.");
         return ParseResult(response ?? throw new InvalidOperationException("Copilot returned no structured findings."));

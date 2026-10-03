@@ -30,9 +30,13 @@ public sealed class CopilotContractTests : IDisposable
         var repo = Path.Combine(root, "repo with spaces");
         var args = CopilotContract.ReviewArguments(repo, Path.Combine(root, "logs"));
         Assert.Contains("--disallow-temp-dir", args);
-        foreach (var flag in new[] { "--disable-builtin-mcps", "--no-custom-instructions", "--no-remote", "--no-remote-export", "--no-ask-user", "--no-auto-update", "--no-auto-login" }) Assert.Contains(flag, args);
+        foreach (var flag in new[] { "--disable-builtin-mcps", "--no-custom-instructions", "--no-remote", "--no-remote-export", "--no-ask-user", "--no-auto-update", "--no-eager-powershell-resolution", "--no-experimental" }) Assert.Contains(flag, args);
+        Assert.DoesNotContain("--no-auto-login", args); // Saved dedicated-account hydration is allowed.
         var info = CopilotContract.StartInfo(new("copilot.exe", []), Run, Profile, Path.Combine(root, "cache"), args);
         Assert.False(info.UseShellExecute);
+        Assert.Equal("utf-8", info.StandardInputEncoding!.WebName);
+        Assert.Equal("utf-8", info.StandardOutputEncoding!.WebName);
+        Assert.IsType<System.Text.DecoderExceptionFallback>(info.StandardOutputEncoding.DecoderFallback);
         Assert.Equal(Run, info.WorkingDirectory);
         Assert.NotEqual(repo, info.WorkingDirectory);
         Assert.Equal(repo, args[1]);
@@ -48,12 +52,15 @@ public sealed class CopilotContractTests : IDisposable
 
     [Fact] public void EmptyProfileAndDefenceInDepthSettingAreSafe() { File.WriteAllText(Path.Combine(Profile, "settings.json"), "{\"disableAllHooks\":true}"); Assert.NotEmpty(CopilotPreflight.Inspect(Profile, Run)); }
     [Fact]
-    public void StructuralPreflightCannotBypassIncompleteAuthenticatedAcceptance()
+    public void SavedAccountSelectionUsesOnlyDedicatedHomeAndIsolatedExecutablePath()
     {
         File.WriteAllText(Path.Combine(Profile, "config.json"), "{\"loggedInUsers\":[],\"lastLoggedInUser\":null}");
         Assert.NotEmpty(CopilotPreflight.Inspect(Profile, Run));
-        Assert.False(CopilotContract.ReviewContractVerified);
-        Assert.Contains("could not authenticate", CopilotContract.ReviewExecutionBlockReason);
+        var info = CopilotContract.StartInfo(new("copilot.exe", []), Run, Profile, Path.Combine(root, "cache"), []);
+        Assert.Equal(Profile, info.Environment["COPILOT_HOME"]);
+        Assert.Equal(Environment.SystemDirectory, info.Environment["PATH"]);
+        Assert.DoesNotContain("--config-dir", info.ArgumentList);
+        Assert.DoesNotContain("PATHEXT", info.Environment.Keys);
     }
     [Fact]
     public void ChildEnvironmentOnlyReadsBenignVariablesAndDropsAuthorityOverrides()
@@ -69,7 +76,9 @@ public sealed class CopilotContractTests : IDisposable
             "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "COPILOT_GH_HOST", "GH_CONFIG_DIR",
             "COPILOT_ALLOW_ALL", "COPILOT_CUSTOM_INSTRUCTIONS_DIRS", "COPILOT_PROVIDER_API_KEY",
             "COPILOT_PROVIDER_API_KEY_COMMAND", "COPILOT_PROVIDER_BASE_URL", "COPILOT_PROVIDERS_CONFIG",
-            "NODE_OPTIONS", "COPILOT_CLI_VERSION", "COPILOT_OTEL_ENABLED", "OTEL_EXPORTER_OTLP_HEADERS"
+            "NODE_OPTIONS", "COPILOT_CLI_VERSION", "COPILOT_OTEL_ENABLED", "OTEL_EXPORTER_OTLP_HEADERS",
+            "GITHUB_COPILOT_API_TOKEN", "BLACKBIRD_API_TOKEN", "CAPI_HMAC_KEY", "OPENAI_API_KEY",
+            "AZURE_OPENAI_API_KEY", "ANTHROPIC_API_KEY", "UNRELATED_PARENT_VALUE", "PATHEXT"
         };
         foreach (var key in authorityVariables)
         {
@@ -84,8 +93,21 @@ public sealed class CopilotContractTests : IDisposable
             Assert.DoesNotContain(key, requested);
             Assert.Equal("false", info.Environment[key]);
         }
-        Assert.Equal(requested.Count + 6, info.Environment.Count);
+        Assert.DoesNotContain("PATH", requested);
+        Assert.Equal(Environment.SystemDirectory, info.Environment["PATH"]);
+        Assert.Equal(requested.Count + 7, info.Environment.Count);
     }
+
+    [Theory]
+    [InlineData("gh")] [InlineData("gh.exe")] [InlineData("GH.COM")]
+    [InlineData("gh.cmd")] [InlineData("gh.bat")] [InlineData("gh.ps1")]
+    public void GitHubCliFallbackExecutableBlocksLaunch(string name)
+    {
+        File.WriteAllText(Path.Combine(Run, name), "synthetic failing helper");
+        Assert.Throws<InvalidOperationException>(() => CopilotGitHubCliIsolation.InspectDirectories([Run]));
+    }
+    [Fact] public void EmptySearchDirectoryCannotSupplyGitHubCliFallback() => CopilotGitHubCliIsolation.InspectDirectories([Run]);
+    [Fact] public void UnknownExecutableSearchDirectoryFailsClosed() => Assert.Throws<InvalidOperationException>(() => CopilotGitHubCliIsolation.InspectDirectories([Path.Combine(root, "missing")]));
 
     [Theory]
     [InlineData(false, false, false, false, "Copilot is unavailable")]
@@ -133,13 +155,18 @@ public sealed class CopilotContractTests : IDisposable
     [
         "{\"type\":\"session.tools_updated\",\"data\":{\"model\":\"fixture\"}}",
         "{\"type\":\"session.mcp_servers_loaded\",\"data\":{\"servers\":[{\"name\":\"github-mcp-server\",\"status\":\"disabled\"},{\"name\":\"githubiq\",\"status\":\"disabled\"}]}}",
-        "{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"view\"}}",
+        "{\"type\":\"tool.execution_start\",\"data\":{\"toolCallId\":\"fixture\",\"toolName\":\"view\"}}",
+        "{\"type\":\"tool.execution_complete\",\"data\":{\"toolCallId\":\"fixture\",\"success\":true}}",
         "{\"type\":\"session.usage_checkpoint\",\"data\":{\"tools\":[{\"name\":\"view\"},{\"name\":\"grep\"},{\"name\":\"glob\"}]}}",
         "{\"type\":\"assistant.message\",\"data\":{\"content\":\"{\\\"findings\\\":[]}\"}}",
         "{\"type\":\"result\"}"
     ];
     private static CopilotStreamValidator Stream(IEnumerable<string>? frames = null) { var v = new CopilotStreamValidator(); foreach (var f in frames ?? ValidFrames) v.Accept(f); return v; }
     [Fact] public void ManifestAfterFirstExecutionAndValidZeroFindingsAreAccepted() => Assert.Empty(Stream().Complete(0, false).Findings);
+    [Fact] public void MissingToolCompletionRejected() => Assert.Throws<InvalidOperationException>(() => Stream(ValidFrames.Where(f => !f.Contains("execution_complete"))).Complete(0, false));
+    [Fact] public void UnmatchedToolCompletionRejected() => Assert.Throws<InvalidOperationException>(() => Stream(ValidFrames.Select(f => f.Contains("execution_complete") ? f.Replace("fixture", "unmatched") : f)).Complete(0, false));
+    [Fact] public void ConflictingStreamedToolNameRejected() => Assert.Throws<InvalidOperationException>(() => Stream(ValidFrames.Prepend("{\"type\":\"assistant.tool_call_delta\",\"data\":{\"toolCallId\":\"fixture\",\"toolName\":\"grep\",\"inputDelta\":\"{}\"}}")).Complete(0, false));
+    [Fact] public void DuplicateToolCompletionRejected() => Assert.Throws<InvalidOperationException>(() => Stream(ValidFrames.Take(4).Concat([ValidFrames[3]]).Concat(ValidFrames.Skip(4))).Complete(0, false));
     [Fact] public void NonzeroExitRejected() => Assert.Throws<InvalidOperationException>(() => Stream().Complete(1, false));
     [Fact] public void CancellationRejectsEvenCompleteFrames() => Assert.Throws<OperationCanceledException>(() => Stream().Complete(0, true));
     [Fact] public void MissingTerminalRejected() => Assert.Throws<InvalidOperationException>(() => Stream(ValidFrames.SkipLast(1)).Complete(0, false));
@@ -195,5 +222,30 @@ public sealed class CopilotContractTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
         await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(child.HasExited);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task ProcessTransportUsesUtf8AndRejectsMalformedBytes(bool malformed)
+    {
+        var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+        var bytes = malformed ? "0xFF,0x0A" : "0xC3,0xA9,0x20,0xE2,0x80,0x94,0x20,0xE6,0x95,0xB0,0xE6,0x8D,0xAE,0x0A";
+        var info = CopilotContract.StartInfo(new(powershell, []), Run, Profile, Path.Combine(root, "cache"),
+            ["-NoProfile", "-NonInteractive", "-Command", $"[Console]::OpenStandardOutput().Write([byte[]]({bytes}),0,{(malformed ? 2 : 14)})"]);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var lines = new List<string>();
+        if (malformed)
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotProcess.RunAsync(info, null, lines.Add, timeout.Token));
+            Assert.Equal("Copilot emitted invalid UTF-8.", error.Message);
+            Assert.Null(error.InnerException);
+            Assert.Empty(lines);
+        }
+        else
+        {
+            var result = await CopilotProcess.RunAsync(info, null, lines.Add, timeout.Token);
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal("é — 数据", Assert.Single(lines));
+        }
     }
 }

@@ -66,8 +66,6 @@ public sealed class DeskViewModel : ObservableObject
     public string AccountDetail { get => accountDetail; private set => SetProperty(ref accountDetail, value); }
     public bool CanSignOut => false;
     public bool CanSignIn => canSignIn;
-    public bool CanStartReview => CopilotContract.ReviewContractVerified;
-    public string ReviewAvailabilityMessage => CanStartReview ? "" : CopilotContract.ReviewExecutionBlockReason + " You can still prepare and preview the prompt.";
     public bool CanSwitchAccount => false;
     public bool HasProject => Selected != null;
     public bool Empty => Selected == null;
