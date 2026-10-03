@@ -42,7 +42,7 @@ public sealed class GitReviewContextTests
         Assert.Equal(new[] { "one.txt", "two.txt" }, input.SelectedPaths);
         Assert.Contains("one.txt", input.Context);
         await Assert.ThrowsAsync<InvalidOperationException>(() => new GitReviewContext().PrepareAsync(repo.Project, ReviewScope.SelectedPaths, ["../outside.txt"]));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => new GitReviewContext().PrepareAsync(repo.Project, ReviewScope.SelectedPaths, ["unchanged.txt"]));
+        await Assert.ThrowsAsync<ReviewValidationException>(() => new GitReviewContext().PrepareAsync(repo.Project, ReviewScope.SelectedPaths, ["unchanged.txt"]));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class GitReviewContextTests
         using var repo = new TemporaryGitRepository();
         repo.Write(".env", "SYNTHETIC_TEST_SECRET=never-expose\n");
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<PreparationException>(() =>
             new GitReviewContext().PrepareAsync(repo.Project, ReviewScope.WorkingChanges));
 
         Assert.Contains("sensitive file", error.Message);
@@ -127,7 +127,7 @@ public sealed class GitReviewContextTests
         Assert.Contains("Submodule", error.Message);
     }
 
-    private sealed class TemporaryGitRepository : IDisposable
+    internal sealed class TemporaryGitRepository : IDisposable
     {
         private readonly string _parent = Path.Combine(Path.GetTempPath(), "AIReviewDesk.Tests", Guid.NewGuid().ToString("N"));
         public string Root { get; }

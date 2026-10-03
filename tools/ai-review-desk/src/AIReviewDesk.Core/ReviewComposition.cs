@@ -41,7 +41,7 @@ public static class PromptComposer
 
         var metadata = $"Project: {input.Project.DisplayName}\nRepository: {input.Project.RepositoryPath}\nBranch: {input.Snapshot.Branch}\n" +
             $"HEAD: {input.Snapshot.HeadSha ?? "unavailable"}\nBase: {input.Snapshot.BaseRef ?? input.Project.DefaultBase ?? "unavailable"}\n" +
-            $"Merge base: {input.Snapshot.MergeBaseSha ?? "unavailable"}\nChanged files: {input.Snapshot.ChangedFileCount}\nFingerprint: {input.Fingerprint}";
+            $"Merge base: {input.Snapshot.MergeBaseSha ?? "unavailable"}\nTracked changes: {input.Snapshot.TrackedChangedCount}\nUntracked files: {input.Snapshot.UntrackedCount}\nFingerprint: {input.Fingerprint}";
         AppendSection(builder, "Repository and project snapshot", metadata);
 
         var scope = input.Scope switch
@@ -122,7 +122,7 @@ public static class HandoffFormatter
         builder.AppendLine($"Profiles: {(record.ProfileIds.Count == 0 ? "unspecified" : string.Join(", ", record.ProfileIds.Select(id => record.ProfileVersions.TryGetValue(id, out var version) ? $"{id} v{version}" : id)))}");
         builder.AppendLine($"Shared reviewer policy: v{record.SharedPolicyVersion}");
         builder.AppendLine($"Run: {record.TimestampUtc:O}; app {EmptyFallback(record.AppVersion)}; Copilot CLI {EmptyFallback(record.CopilotCliVersion)}; model {EmptyFallback(record.CopilotModel)}");
-        builder.AppendLine($"Status: {record.Status}; changed files: {record.ChangedFileCount}; diff hash: {EmptyFallback(record.DiffHash)}");
+        builder.AppendLine($"Status: {record.Status}; {new ReviewDetails(record).ChangeCounts}; diff hash: {EmptyFallback(record.DiffHash)}");
         builder.AppendLine($"Repository fingerprints: before {EmptyFallback(record.FingerprintBefore)}; after {EmptyFallback(record.FingerprintAfter)}");
         builder.AppendLine();
         builder.AppendLine("Summary");

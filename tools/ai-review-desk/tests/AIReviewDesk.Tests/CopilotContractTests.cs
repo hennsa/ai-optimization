@@ -112,7 +112,7 @@ public sealed class CopilotContractTests : IDisposable
     [Theory]
     [InlineData(false, false, false, false, "Copilot is unavailable")]
     [InlineData(true, false, false, false, "Copilot version is unsupported")]
-    [InlineData(true, true, false, false, "Sign-in status unavailable")]
+    [InlineData(true, true, false, false, "Live sign-in status unavailable")]
     [InlineData(true, true, true, false, "Signed in")]
     [InlineData(true, false, false, true, "Copilot setup is blocked")]
     public void AccountStateDoesNotPresentUnknownAuthenticationAsSignedOut(bool available, bool supported, bool authenticated, bool blocked, string expected)

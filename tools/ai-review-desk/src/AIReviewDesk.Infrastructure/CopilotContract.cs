@@ -5,10 +5,11 @@ using System.Text.RegularExpressions;
 namespace AIReviewDesk.Infrastructure;
 
 public sealed record CopilotInstallation(string Executable, IReadOnlyList<string> PrefixArguments);
-public sealed record CopilotAccountState(bool Available, bool Supported, bool Authenticated, string? Identity, string? Version, string Message, bool ConfigurationBlocked = false)
+public sealed record CopilotAccountState(bool Available, bool Supported, bool Authenticated, string? Identity, string? Version, string Message, bool ConfigurationBlocked = false, bool SavedAccountConfigured = false, bool SignInCompleted = false)
 {
     public string DisplayStatus => !Available ? "Copilot is unavailable" : ConfigurationBlocked ? "Copilot setup is blocked"
-        : !Supported ? "Copilot version is unsupported" : Authenticated ? "Signed in" : "Sign-in status unavailable";
+        : !Supported ? "Copilot version is unsupported" : SignInCompleted ? "Sign-in completed"
+        : SavedAccountConfigured ? "Saved Copilot account configured" : Authenticated ? "Signed in" : "Live sign-in status unavailable";
 }
 
 /// <summary>Deliberate version-specific authority contract. Changing this requires real security verification.</summary>

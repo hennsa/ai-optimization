@@ -32,9 +32,18 @@ public sealed class CopilotService
             catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException)
             { return new(true, true, false, null, version, ex.Message, ConfigurationBlocked: true); }
             finally { DeleteRunDirectory(preflightRun); }
-            return new(true, true, false, null, version, "Account status is unknown: CLI 1.0.91 provides no supported noninteractive account-status command. Configuration passed structural preflight; the official CLI owns authentication. Credential values are never decoded or retained.", ConfigurationBlocked: false);
+            bool savedAccount;
+            try { savedAccount = HasSavedAccountMetadata(Profile); }
+            catch (InvalidOperationException ex) { return new(true, true, false, null, version, ex.Message, ConfigurationBlocked: true); }
+            return new(true, true, false, null, version, "Live account status unavailable: CLI 1.0.91 provides no supported noninteractive account-status command. Configuration passed structural preflight; the official CLI owns authentication. Credential values are never decoded or retained.", ConfigurationBlocked: false, SavedAccountConfigured: savedAccount);
         }
         finally { DeleteRunDirectory(run); }
+    }
+
+    public static bool HasSavedAccountMetadata(string profile)
+    {
+        var config = Path.Combine(profile, "config.json");
+        return File.Exists(config) && CopilotConfigScanner.InspectFile(config).SavedAccountPresent;
     }
 
     public async Task SignInAsync(CancellationToken cancellationToken = default)
@@ -51,6 +60,9 @@ public sealed class CopilotService
             timeout.CancelAfter(TimeSpan.FromMinutes(5));
             var result = await CopilotProcess.RunAsync(CopilotContract.StartInfo(installation, run, Profile, Path.Combine(run, "cache"), ["login", "--web-flow"]), null, _ => { }, timeout.Token);
             if (result.ExitCode != 0) throw new InvalidOperationException("GitHub sign-in did not complete. Try the official Copilot browser flow again.");
+            var validationRun = CreateRunDirectory();
+            try { CopilotPreflight.Inspect(Profile, validationRun); }
+            finally { DeleteRunDirectory(validationRun); }
         }
         finally { DeleteRunDirectory(run); }
     }
@@ -60,25 +72,26 @@ public sealed class CopilotService
 
     public async Task<ReviewRecord> RunAsync(ReviewInput input, IEnumerable<string> profileIds, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
+        if (!input.HasReviewableChanges) throw new ReviewValidationException("The selected scope has no changes to review. Preview remains available.");
         var ids = profileIds.ToArray();
         var prompt = PromptComposer.Compose(input, ids);
         var profiles = BuiltInProfiles.All.Where(p => ids.Contains(p.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var record = new ReviewRecord
         {
-            SchemaVersion = 2,
+            SchemaVersion = 3,
             ProjectId = input.Project.Id, ProjectName = input.Project.DisplayName, RepositoryPath = input.Project.RepositoryPath,
             Branch = input.Snapshot.Branch, HeadSha = input.Snapshot.HeadSha, BaseRef = input.Snapshot.BaseRef, MergeBaseSha = input.Snapshot.MergeBaseSha,
             Scope = input.Scope, SelectedPaths = input.SelectedPaths, ProfileIds = profiles.Select(p => p.Id).ToArray(),
             ProfileVersions = profiles.ToDictionary(p => p.Id, p => p.Version), SharedPolicyVersion = SharedReviewerPolicy.Version, AppVersion = "0.1.0",
             ProfileNames = profiles.ToDictionary(p => p.Id, p => p.Name),
-            ChangedFileCount = input.Snapshot.ChangedFileCount, FingerprintBefore = input.Fingerprint,
+            ChangedFileCount = input.Snapshot.ChangedFileCount, TrackedChangedCount = input.Snapshot.TrackedChangedCount, UntrackedCount = input.Snapshot.UntrackedCount, FingerprintBefore = input.Fingerprint,
             DiffHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input.Context))), Status = ReviewStatus.Failed
         };
         string? run = null;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report("Preparing review");
+            progress?.Report("Fingerprinting repository");
             var integrity = new GitReviewContext();
             if (await integrity.FingerprintAsync(input.Project.RepositoryPath, cancellationToken) != input.Fingerprint)
                 return record with { Status = ReviewStatus.Stale, Diagnostic = "The repository changed after prompt preparation. Preview a fresh snapshot before reviewing." };

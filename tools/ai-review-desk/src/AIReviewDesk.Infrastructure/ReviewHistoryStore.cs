@@ -52,7 +52,7 @@ public sealed class ReviewHistoryStore
 
     private static ReviewRecord Normalize(ReviewRecord record)
     {
-        if (record.SchemaVersion is < 1 or > 2 || !Enum.IsDefined(record.Status) || !Enum.IsDefined(record.Scope) ||
+        if (record.SchemaVersion is < 1 or > 3 || !Enum.IsDefined(record.Status) || !Enum.IsDefined(record.Scope) ||
             record.Id == Guid.Empty || record.ProjectId == Guid.Empty || record.TimestampUtc == default)
             throw new InvalidOperationException("Invalid or unsupported review history record.");
         var result = new ReviewResult();
@@ -67,6 +67,8 @@ public sealed class ReviewHistoryStore
         return record with
         {
             Result = result,
+            TrackedChangedCount = record.SchemaVersion >= 3 ? record.TrackedChangedCount : null,
+            UntrackedCount = record.SchemaVersion >= 3 ? record.UntrackedCount : null,
             SelectedPaths = record.SelectedPaths?.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray() ?? [],
             ProfileIds = record.ProfileIds?.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray() ?? [],
             ProfileNames = record.ProfileNames ?? new Dictionary<string, string>(),

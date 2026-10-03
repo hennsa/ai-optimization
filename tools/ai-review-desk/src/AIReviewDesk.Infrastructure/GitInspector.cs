@@ -1,12 +1,9 @@
-using System.Diagnostics;
 using AIReviewDesk.Core;
 
 namespace AIReviewDesk.Infrastructure;
 
 public sealed class GitInspector
 {
-    private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(15);
-
     public async Task<RepositorySnapshot> InspectAsync(
         string path,
         string? configuredBase = null,
@@ -106,7 +103,7 @@ public sealed class GitInspector
             UntrackedCount = counts.Untracked,
             ConflictCount = counts.Conflicts,
             ChangedFileCount = counts.Files,
-            TrackedChangedCount = changedPaths.Count(path => !IsUntrackedPath(path, status)),
+            TrackedChangedCount = counts.Files - counts.Untracked,
             ChangedPaths = changedPaths,
             DiffSummary = diffSummary
         };
@@ -127,20 +124,6 @@ public sealed class GitInspector
             .Distinct(StringComparer.Ordinal)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
-    }
-
-    private static bool IsUntrackedPath(string path, string status)
-    {
-        var entries = status.Split('\0', StringSplitOptions.RemoveEmptyEntries);
-        for (var i = 0; i < entries.Length; i++)
-        {
-            var entry = entries[i];
-            if (entry.Length < 4) continue;
-            if (entry.StartsWith("?? ", StringComparison.Ordinal) && string.Equals(entry[3..], path, StringComparison.Ordinal))
-                return true;
-            if (entry[0] is 'R' or 'C' || entry[1] is 'R' or 'C') i++;
-        }
-        return false;
     }
 
     private static async Task<string?> ChooseLikelyBaseAsync(
@@ -258,50 +241,8 @@ public sealed class GitInspector
     private static async Task<(int ExitCode, string StandardOutput, string StandardError)> RunGitResultAsync(
         string workingDirectory, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "git.exe",
-                WorkingDirectory = workingDirectory,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            }
-        };
-        process.StartInfo.ArgumentList.Add("--no-optional-locks");
-        process.StartInfo.ArgumentList.Add("-c");
-        process.StartInfo.ArgumentList.Add("core.fsmonitor=false");
-        foreach (var argument in arguments)
-            process.StartInfo.ArgumentList.Add(argument);
-
-        try
-        {
-            if (!process.Start())
-                throw new InvalidOperationException("Git could not be started.");
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            throw new InvalidOperationException("Git was not found. Install Git for Windows and try again.", ex);
-        }
-
-        using var timeout = new CancellationTokenSource(CommandTimeout);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(linked.Token);
-        var stderrTask = process.StandardError.ReadToEndAsync(linked.Token);
-        try
-        {
-            await process.WaitForExitAsync(linked.Token);
-            return (process.ExitCode, await stdoutTask, await stderrTask);
-        }
-        catch (OperationCanceledException)
-        {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-            if (cancellationToken.IsCancellationRequested)
-                throw;
-            throw new InvalidOperationException("Git took too long to respond. Try again when the repository is available.");
-        }
+        var result = await GitRunner.RunAsync(workingDirectory, arguments, int.MaxValue, cancellationToken);
+        return (result.ExitCode, result.Text, result.Error);
     }
 
     private static string FormatGitError(string error)
@@ -309,6 +250,6 @@ public sealed class GitInspector
         var message = error.Trim();
         if (message.Contains("not a git repository", StringComparison.OrdinalIgnoreCase))
             return "This folder is not inside a Git repository.";
-        return string.IsNullOrEmpty(message) ? "Git could not inspect this repository." : $"Git could not inspect this repository: {message}";
+        return new PreparationException(PreparationFailure.GitCommand).Message;
     }
 }

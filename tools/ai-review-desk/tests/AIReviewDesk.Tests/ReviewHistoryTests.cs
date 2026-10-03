@@ -158,13 +158,15 @@ public sealed class ReviewHistoryTests : IDisposable
         var vm = new DeskViewModel(root);
         vm.RebuildProfileChoices(["standard"]);
         await vm.SaveProjectAsync(new ProjectRegistration { Id = projectId, RepositoryPath = root }, true);
-        await vm.StartReviewAsync(ReviewScope.SelectedPaths, []);
+        File.WriteAllText(Path.Combine(root, ".env"), "SYNTHETIC_SECRET=must-not-escape");
+        await vm.StartReviewAsync(ReviewScope.WorkingChanges, []);
         Assert.False(vm.IsReviewRunning);
         Assert.True(vm.ShowReviewDetail);
         Assert.Equal(ReviewStatus.Failed, vm.LatestReview?.Status);
         Assert.False(vm.CanHandoffLatest);
         var loaded = Assert.Single(await new ReviewHistoryStore(root).LoadAsync(projectId));
-        Assert.Contains("context could not be prepared", loaded.Diagnostic);
+        Assert.Contains("sensitive file", loaded.Diagnostic);
+        Assert.DoesNotContain("must-not-escape", loaded.Diagnostic);
         Assert.Empty(loaded.Result.Findings);
     }
 

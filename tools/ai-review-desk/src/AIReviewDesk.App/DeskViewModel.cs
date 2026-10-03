@@ -75,6 +75,11 @@ public sealed class DeskViewModel : ObservableObject
     public bool Interactive => !Busy && !IsReviewRunning && ready;
     public bool HasNotice => Notice.Length > 0;
     public bool HasError => Error.Length > 0;
+    public bool ShowProjectTabs => HasProject && (ShowProjects || ShowReviews);
+    public bool OverviewSelected => ShowProjects;
+    public bool ReviewsSelected => ShowReviews;
+    public void SelectProjectTab(bool reviews) { Area = reviews ? "Reviews" : "Projects"; if (reviews) ShowReviewHistory(); }
+    public void ShowSelectedProject() { if (HasProject) Area = "Projects"; }
     public bool ShowProjects => Area == "Projects";
     public bool ShowReviews => Area == "Reviews";
     public bool ShowProfiles => Area == "Profiles";
@@ -111,7 +116,7 @@ public sealed class DeskViewModel : ObservableObject
 
     private void NotifyView()
     {
-        foreach (var property in new[] { nameof(ShowProjects), nameof(ShowReviews), nameof(ShowProfiles), nameof(ShowSettings), nameof(HasProject), nameof(Empty), nameof(HasSnapshot), nameof(SnapshotUnavailable), nameof(HasBaseWarning), nameof(WorkingState), nameof(BaseLabel), nameof(ProfileLabel), nameof(IsSelectedPaths), nameof(CanHandoffLatest) })
+        foreach (var property in new[] { nameof(ShowProjectTabs), nameof(OverviewSelected), nameof(ReviewsSelected), nameof(ShowProjects), nameof(ShowReviews), nameof(ShowProfiles), nameof(ShowSettings), nameof(HasProject), nameof(Empty), nameof(HasSnapshot), nameof(SnapshotUnavailable), nameof(HasBaseWarning), nameof(WorkingState), nameof(BaseLabel), nameof(ProfileLabel), nameof(IsSelectedPaths), nameof(CanHandoffLatest) })
             OnPropertyChanged(property);
     }
 
@@ -276,13 +281,13 @@ public sealed class DeskViewModel : ObservableObject
     {
         if (Selected == null) throw new InvalidOperationException("Choose a project before preparing a review.");
         var profileIds = SelectedProfileIds();
-        if (profileIds.Count == 0) throw new InvalidOperationException("Choose at least one review profile.");
+        if (profileIds.Count == 0) throw new ReviewValidationException("Choose at least one review profile.");
         Scope = forScope;
-        ReviewProgress = "Preparing review context";
-        preparedInput = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths);
+        preparedInput = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, preview: true, progress: new Progress<string>(message => ReviewProgress = message));
         OnPropertyChanged(nameof(ReviewInputReady));
+        ReviewProgress = "Preparing prompt";
         var prompt = PromptComposer.Compose(preparedInput, profileIds);
-        ReviewProgress = "Prompt prepared from the current repository snapshot.";
+        ReviewProgress = preparedInput.HasReviewableChanges ? "Prompt prepared from the current repository snapshot." : "The selected scope has no changes. Preview is available; Start review is blocked.";
         return prompt;
     }
 
@@ -307,16 +312,14 @@ public sealed class DeskViewModel : ObservableObject
         try
         {
             var profileIds = SelectedProfileIds();
-            if (profileIds.Count == 0) throw new InvalidOperationException("Choose at least one review profile.");
-            var input = preparedInput;
-            if (input == null || input.Project.Id != Selected.Id || input.Scope != forScope)
-            {
-                ReviewProgress = "Preparing review context";
-                input = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, cancellationToken);
-                preparedInput = input;
-                OnPropertyChanged(nameof(ReviewInputReady));
-            }
+            if (profileIds.Count == 0) throw new ReviewValidationException("Choose at least one review profile.");
+            // Always prepare afresh for execution; a preview is an audit snapshot, not execution authority.
+            var input = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, cancellationToken, progress: new Progress<string>(message => ReviewProgress = message));
+            Snapshot = input.Snapshot;
+            preparedInput = input;
+            OnPropertyChanged(nameof(ReviewInputReady));
             // Validate through the same production composer used by the preview and runner.
+            ReviewProgress = "Preparing prompt";
             _ = PromptComposer.Compose(input, profileIds);
             var progress = new Progress<string>(message => ReviewProgress = message);
             var record = await copilot.RunAsync(input, profileIds, progress, cancellationToken);
@@ -337,11 +340,16 @@ public sealed class DeskViewModel : ObservableObject
             await SavePreparationOutcomeAsync(ReviewStatus.Cancelled, "Review cancelled during context preparation. No accepted result is available.", forScope, selectedPaths);
             ReviewProgress = "Review cancelled.";
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+        catch (ReviewValidationException ex)
         {
             Error = ex.Message;
+            ReviewProgress = "Review has not started. Preview remains available.";
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Error = SafePreparationDiagnostic(ex);
             if (LatestReview == null)
-                await SavePreparationOutcomeAsync(ReviewStatus.Failed, "Review context could not be prepared. Check the current repository and scope before trying again.", forScope, selectedPaths);
+                await SavePreparationOutcomeAsync(ReviewStatus.Failed, SafePreparationDiagnostic(ex), forScope, selectedPaths);
             ReviewProgress = "Review failed.";
         }
         finally
@@ -365,16 +373,23 @@ public sealed class DeskViewModel : ObservableObject
         OnPropertyChanged(nameof(EmptyHistory));
     }
 
+    public static string SafePreparationDiagnostic(Exception error) => error switch
+    {
+        PreparationException known => known.Message,
+        IOException or UnauthorizedAccessException => "Repository files could not be read during preparation. Check access and file availability.",
+        _ => "Repository context could not be prepared safely. Check the repository and selected scope."
+    };
+
     private async Task SavePreparationOutcomeAsync(ReviewStatus status, string diagnostic, ReviewScope forScope, IReadOnlyList<string> paths)
     {
         if (Selected == null) return;
         var profiles = Profiles.Where(p => SelectedProfileIds().Contains(p.Id)).ToArray();
         var record = new ReviewRecord
         {
-            SchemaVersion = 2, ProjectId = Selected.Id, ProjectName = Selected.DisplayName, RepositoryPath = Selected.RepositoryPath,
+            SchemaVersion = 3, ProjectId = Selected.Id, ProjectName = Selected.DisplayName, RepositoryPath = Selected.RepositoryPath,
             Scope = forScope, SelectedPaths = forScope == ReviewScope.SelectedPaths ? paths : [],
             Branch = Snapshot?.Branch ?? "", HeadSha = Snapshot?.HeadSha, BaseRef = Snapshot?.BaseRef, MergeBaseSha = Snapshot?.MergeBaseSha,
-            ChangedFileCount = Snapshot?.ChangedFileCount ?? 0, ProfileIds = profiles.Select(p => p.Id).ToArray(),
+            ChangedFileCount = Snapshot?.ChangedFileCount ?? 0, TrackedChangedCount = Snapshot?.TrackedChangedCount, UntrackedCount = Snapshot?.UntrackedCount, ProfileIds = profiles.Select(p => p.Id).ToArray(),
             ProfileNames = profiles.ToDictionary(p => p.Id, p => p.Name), ProfileVersions = profiles.ToDictionary(p => p.Id, p => p.Version),
             AppVersion = "0.1.0", Status = status, Diagnostic = diagnostic
         };
@@ -453,8 +468,7 @@ public sealed class DeskViewModel : ObservableObject
         try
         {
             await copilot.SignInAsync();
-            await RefreshAccountAsync();
-            ReviewProgress = "The official GitHub sign-in flow finished. This CLI version does not expose a supported account-status command.";
+            SetAccount((await copilot.GetAccountAsync()) with { SignInCompleted = true });
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
     }
@@ -475,14 +489,15 @@ public sealed class DeskViewModel : ObservableObject
         catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
     }
 
-    private void SetAccount(CopilotAccountState account)
+    internal void SetAccount(CopilotAccountState account)
     {
         canSignIn = account.Available && account.Supported && !account.ConfigurationBlocked;
         OnPropertyChanged(nameof(CanSignIn));
         AccountStatus = account.DisplayStatus;
         var identity = string.IsNullOrWhiteSpace(account.Identity) ? "Account identity unavailable" : account.Identity;
         var version = string.IsNullOrWhiteSpace(account.Version) ? "Version unavailable" : $"GitHub Copilot CLI {account.Version}";
-        AccountDetail = $"{identity} · {version}. {account.Message} Sign out and account switching are unavailable because this CLI version has no supported noninteractive sign-out command.";
+        var completion = account.SignInCompleted ? "The dedicated Copilot profile was updated successfully. Authentication is verified when a review starts. " : "";
+        AccountDetail = $"{completion}{identity} · {version}. {account.Message} Sign out and account switching are unavailable because this CLI version has no supported noninteractive sign-out command.";
     }
 
     private async Task PersistAsync(AppState updated)

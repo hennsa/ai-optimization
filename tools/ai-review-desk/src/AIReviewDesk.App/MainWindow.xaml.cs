@@ -11,11 +11,12 @@ namespace AIReviewDesk.App;
 
 public partial class MainWindow : FluentWindow
 {
-    public DeskViewModel ViewModel { get; } = new();
+    public DeskViewModel ViewModel { get; }
     private bool initialized;
 
-    public MainWindow()
+    public MainWindow(string? dataDirectory = null)
     {
+        ViewModel = new DeskViewModel(dataDirectory);
         InitializeComponent();
         DataContext = ViewModel;
         ViewModel.PropertyChanged += (_, change) =>
@@ -53,21 +54,9 @@ public partial class MainWindow : FluentWindow
         if (sender is FrameworkElement { Tag: string area }) ViewModel.Area = area;
     }
 
-    private async void OnProjectArea(object sender, RoutedEventArgs e)
+    private void OnProjectTab(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: ProjectRegistration project, Tag: string area }) return;
-        if (ViewModel.Selected?.Id != project.Id)
-            await ViewModel.ExecuteAsync(() => ViewModel.SelectAsync(project));
-        if (area == "Reviews")
-        {
-            await ViewModel.ExecuteAsync(async () =>
-            {
-                await ViewModel.LoadHistoryAsync(project.Id);
-            });
-            ViewModel.ShowReviewHistory();
-            HistoryList.SelectedItem = null;
-        }
-        ViewModel.Area = area;
+        if (sender is FrameworkElement { Tag: string area }) ViewModel.SelectProjectTab(area == "Reviews");
     }
 
     private void OnReviewInputChanged(object sender, RoutedEventArgs e)
@@ -154,6 +143,20 @@ public partial class MainWindow : FluentWindow
     private async void OnSignIn(object sender, RoutedEventArgs e) => await ViewModel.SignInAsync();
     private async void OnSignOut(object sender, RoutedEventArgs e) => await ViewModel.SignOutAsync();
     private async void OnSwitchAccount(object sender, RoutedEventArgs e) => await ViewModel.SwitchAccountAsync();
+
+    private void OnProjectClicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (ViewModel.Interactive && sender is ListBox list &&
+            ItemsControl.ContainerFromElement(list, e.OriginalSource as DependencyObject) is ListBoxItem { DataContext: ProjectRegistration project } &&
+            project.Id == ViewModel.Selected?.Id && (ViewModel.ShowProfiles || ViewModel.ShowSettings))
+            ViewModel.ShowSelectedProject();
+    }
+
+    private void OnProjectKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (ViewModel.Interactive && e.Key == System.Windows.Input.Key.Enter && ViewModel.HasProject)
+        { ViewModel.ShowSelectedProject(); e.Handled = true; }
+    }
 
     private async void OnProjectSelected(object sender, SelectionChangedEventArgs e)
     {

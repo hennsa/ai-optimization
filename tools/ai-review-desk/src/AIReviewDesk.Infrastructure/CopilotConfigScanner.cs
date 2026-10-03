@@ -17,7 +17,7 @@ public sealed class CopilotConfigBlockedException : InvalidOperationException
 }
 
 // No identity, token, arbitrary property name, parser error, raw bytes or raw JSON can escape this API.
-public readonly record struct CopilotConfigInspection(bool CredentialFieldPresent, bool AccountMetadataPresent);
+public readonly record struct CopilotConfigInspection(bool CredentialFieldPresent, bool AccountMetadataPresent, bool SavedAccountPresent = false);
 
 /// <summary>
 /// Narrow 1.0.91 structural contract. String VALUES are never decoded, compared, copied or hashed.
@@ -68,6 +68,7 @@ public static class CopilotConfigScanner
             var seen = new HashSet<Field>();
             var credentials = false;
             var metadata = false;
+            var savedAccount = false;
             while (ReadMember(ref reader, seen) is { } field)
             {
                 if (settingsOnly)
@@ -82,11 +83,11 @@ public static class CopilotConfigScanner
                     case Field.LoggedInUsers:
                         metadata = true;
                         Require(ref reader, JsonTokenType.StartArray);
-                        while (Read(ref reader) != JsonTokenType.EndArray) Account(ref reader);
+                        while (Read(ref reader) != JsonTokenType.EndArray) { Account(ref reader); savedAccount = true; }
                         break;
                     case Field.LastLoggedInUser:
                         metadata = true;
-                        if (reader.TokenType != JsonTokenType.Null) Account(ref reader);
+                        if (reader.TokenType != JsonTokenType.Null) { Account(ref reader); savedAccount = true; }
                         break;
                     case Field.AuthTokens:
                         credentials = true;
@@ -118,7 +119,7 @@ public static class CopilotConfigScanner
             }
             if (settingsOnly && !seen.Contains(Field.DisableAllHooks)) throw Block(CopilotConfigBlock.UnexpectedSchema);
             if (reader.Read()) throw Block(CopilotConfigBlock.UnexpectedSchema);
-            return new(credentials, metadata);
+            return new(credentials, metadata, savedAccount);
         }
         catch (CopilotConfigBlockedException) { throw; }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)

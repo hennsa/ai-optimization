@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using AIReviewDesk.Core;
@@ -10,22 +9,30 @@ public sealed class GitReviewContext
 {
     private const int MaxDiffCharacters = 1_500_000;
     private const int MaxUntrackedBytes = 128 * 1024;
-    private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
 
     public async Task<ReviewInput> PrepareAsync(
         ProjectRegistration project,
         ReviewScope scope,
         IReadOnlyList<string>? selectedPaths = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool preview = false, IProgress<string>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ct.ThrowIfCancellationRequested();
         if (!Enum.IsDefined(scope)) throw new InvalidOperationException("The selected review scope is not supported.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+        try { return await PrepareCoreAsync(project, scope, selectedPaths, linked.Token, preview, progress); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new PreparationException(PreparationFailure.Timeout); }
+    }
+
+    private async Task<ReviewInput> PrepareCoreAsync(ProjectRegistration project, ReviewScope scope, IReadOnlyList<string>? selectedPaths, CancellationToken ct, bool preview, IProgress<string>? progress)
+    {
+        progress?.Report("Fingerprinting repository");
         var before = await FingerprintAsync(project.RepositoryPath, ct);
+        progress?.Report("Inspecting repository");
         var snapshot = await new GitInspector().InspectAsync(project.RepositoryPath, project.DefaultBase, ct);
         var root = Path.GetFullPath(snapshot.RootPath);
-        if (!string.Equals(before, await FingerprintAsync(root, ct), StringComparison.Ordinal))
-            throw new InvalidOperationException("The repository changed while review context was being prepared. Refresh and try again.");
         EnsureReviewableSnapshot(snapshot);
 
         var allChanged = scope == ReviewScope.BranchVsBase
@@ -37,24 +44,26 @@ public sealed class GitReviewContext
         var effectivePaths = paths.Count == 0 && scope != ReviewScope.SelectedPaths
             ? allChanged
             : paths;
-        if (scope == ReviewScope.SelectedPaths && paths.Count == 0)
-            throw new InvalidOperationException("Select at least one changed path to review.");
-        if (effectivePaths.Count == 0)
-            throw new InvalidOperationException(scope == ReviewScope.BranchVsBase
+        if (effectivePaths.Count == 0 && !preview)
+            throw new ReviewValidationException(scope == ReviewScope.BranchVsBase
                 ? "The current branch has no changes compared with its configured base."
                 : "There are no working changes to review.");
 
         foreach (var path in effectivePaths)
             if (IsSecretPath(path))
-                throw new InvalidOperationException($"Review context cannot include the sensitive file '{path}'. Remove it from the change or choose a different scope.");
+                throw new PreparationException(PreparationFailure.SensitiveFile);
 
-        var context = scope == ReviewScope.BranchVsBase
+        progress?.Report("Building review context");
+        var context = effectivePaths.Count == 0
+            ? (scope == ReviewScope.BranchVsBase ? "No branch changes are currently present compared with the configured base." : "No working changes are currently present.")
+            : scope == ReviewScope.BranchVsBase
             ? await BuildBranchContextAsync(root, snapshot, effectivePaths, ct)
-            : await BuildWorkingContextAsync(root, effectivePaths, ct);
+            : await BuildWorkingContextAsync(root, effectivePaths, ct, scope == ReviewScope.SelectedPaths);
 
+        progress?.Report("Fingerprinting repository");
         var after = await FingerprintAsync(root, ct);
         if (!string.Equals(before, after, StringComparison.Ordinal))
-            throw new InvalidOperationException("The repository changed while review context was being prepared. Refresh and try again.");
+            throw new PreparationException(PreparationFailure.RepositoryChanged);
 
         return new ReviewInput
         {
@@ -63,6 +72,7 @@ public sealed class GitReviewContext
             Scope = scope,
             SelectedPaths = paths,
             Context = context,
+            HasReviewableChanges = effectivePaths.Count > 0,
             Fingerprint = after
         };
     }
@@ -104,7 +114,7 @@ public sealed class GitReviewContext
         AppendField(output, "refs", refs);
         var status = await RunGitAsync(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=all"], ct);
         if (status.Split('\0', StringSplitOptions.RemoveEmptyEntries).Any(IsConflictEntry))
-            throw new InvalidOperationException("Repository conflicts must be resolved before preparing a review.");
+            throw new PreparationException(PreparationFailure.Conflicts);
         AppendField(output, "status", status);
 
         var indexPathText = (await RunGitAsync(root, ["rev-parse", "--git-path", "index"], ct)).Trim();
@@ -138,16 +148,19 @@ public sealed class GitReviewContext
         var paths = tracked.Keys.Concat(untrackedText.Split('\0', StringSplitOptions.RemoveEmptyEntries))
             .Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal).ToArray();
 
-        foreach (var path in paths)
+        var fieldsByPath = new string[paths.Length];
+        await Parallel.ForEachAsync(Enumerable.Range(0, paths.Length), new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct }, async (i, token) =>
         {
-            ct.ThrowIfCancellationRequested();
+            var path = paths[i];
+            var fileEvidence = new StringBuilder();
+            token.ThrowIfCancellationRequested();
             ValidateRepositoryPath(path);
-            AppendField(output, "path", path);
+            AppendField(fileEvidence, "path", path);
             var absolutePath = ResolveSafePath(root, path, allowMissing: true);
             if (!PathExistsIncludingLink(absolutePath))
             {
-                AppendField(output, "content", "<deleted>");
-                continue;
+                AppendField(fileEvidence, "content", "<deleted>");
+                fieldsByPath[i] = fileEvidence.ToString(); return;
             }
 
             var attributes = File.GetAttributes(absolutePath);
@@ -156,16 +169,18 @@ public sealed class GitReviewContext
                 var target = new FileInfo(absolutePath).LinkTarget ?? new DirectoryInfo(absolutePath).LinkTarget;
                 if (target is null)
                     throw new InvalidOperationException($"Unexpected reparse point at '{path}' cannot be safely fingerprinted.");
-                AppendField(output, "symlink", target ?? "<unreadable-target>");
-                continue;
+                AppendField(fileEvidence, "symlink", target ?? "<unreadable-target>");
+                fieldsByPath[i] = fileEvidence.ToString(); return;
             }
             if ((attributes & FileAttributes.Directory) != 0)
                 throw new InvalidOperationException($"Directory entry '{path}' cannot be safely fingerprinted as a Git file.");
 
             await using var stream = new FileStream(absolutePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            var digest = await SHA256.HashDataAsync(stream, ct);
-            AppendField(output, "file-sha256", Convert.ToHexString(digest));
-        }
+            var digest = await SHA256.HashDataAsync(stream, token);
+            AppendField(fileEvidence, "file-sha256", Convert.ToHexString(digest));
+            fieldsByPath[i] = fileEvidence.ToString();
+        });
+        foreach (var evidence in fieldsByPath) output.Append(evidence);
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(output.ToString())));
     }
@@ -173,9 +188,9 @@ public sealed class GitReviewContext
     private static async Task<IReadOnlyList<string>> GetBranchPathsAsync(string root, RepositorySnapshot snapshot, CancellationToken ct)
     {
         if (snapshot.HeadSha is null)
-            throw new InvalidOperationException("The current branch has no commit to compare with its configured base.");
+            throw new ReviewValidationException("The current branch has no commit to compare with its configured base.");
         if (string.IsNullOrWhiteSpace(snapshot.BaseRef) || string.IsNullOrWhiteSpace(snapshot.MergeBaseSha))
-            throw new InvalidOperationException(snapshot.BaseWarning ?? "A locally available configured base and merge-base are required for branch review.");
+            throw new ReviewValidationException(snapshot.BaseWarning ?? "A locally available configured base and merge-base are required for branch review.");
         await EnsureNoSubmodulesInCommitAsync(root, snapshot.MergeBaseSha, ct);
         await EnsureNoSubmodulesInCommitAsync(root, snapshot.HeadSha, ct);
         var output = await RunGitAsync(root,
@@ -199,7 +214,7 @@ public sealed class GitReviewContext
     private static IReadOnlyList<string> ValidateSelectedPaths(IReadOnlyList<string>? requested, IReadOnlyList<string> changed)
     {
         if (requested is null || requested.Count == 0)
-            throw new InvalidOperationException("Select one or more changed paths to review.");
+            throw new ReviewValidationException("Select one or more changed paths to review.");
         var changedSet = changed.ToHashSet(StringComparer.Ordinal);
         var selected = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var raw in requested)
@@ -207,7 +222,7 @@ public sealed class GitReviewContext
             var path = (raw ?? string.Empty).Replace('\\', '/');
             ValidateRepositoryPath(path);
             if (!changedSet.Contains(path))
-                throw new InvalidOperationException($"'{path}' is not in the changed-path set for this review.");
+                throw new ReviewValidationException("A selected path is no longer changed. Select meaningful changed paths before starting.");
             selected.Add(path);
         }
         return selected.ToArray();
@@ -216,18 +231,22 @@ public sealed class GitReviewContext
     private static async Task<string> BuildBranchContextAsync(string root, RepositorySnapshot snapshot, IReadOnlyList<string> paths, CancellationToken ct)
     {
         var args = new List<string> { "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--binary", snapshot.MergeBaseSha!, snapshot.HeadSha!, "--" };
-        args.AddRange(paths.Select(path => ":(literal)" + path));
+        // Entire branch scope needs no per-file arguments. Windows limits command-line size.
         var (diff, truncated) = await RunGitBoundedAsync(root, args, MaxDiffCharacters, ct);
         return FinishContext($"Scope: branch {snapshot.Branch} versus {snapshot.BaseRef} (merge-base {snapshot.MergeBaseSha}).", diff, truncated, []);
     }
 
-    private static async Task<string> BuildWorkingContextAsync(string root, IReadOnlyList<string> paths, CancellationToken ct)
+    private static async Task<string> BuildWorkingContextAsync(string root, IReadOnlyList<string> paths, CancellationToken ct, bool selectedScope)
     {
+        if (selectedScope && paths.Sum(p => p.Length + 16) > 24_000)
+        {
+            throw new PreparationException(PreparationFailure.ScopeTooLarge);
+        }
         var literal = paths.Select(path => ":(literal)" + path).ToArray();
         var stagedArgs = new List<string> { "diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--binary", "--" };
-        stagedArgs.AddRange(literal);
+        if (selectedScope) stagedArgs.AddRange(literal);
         var unstagedArgs = new List<string> { "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--binary", "--" };
-        unstagedArgs.AddRange(literal);
+        if (selectedScope) unstagedArgs.AddRange(literal);
         var staged = await RunGitBoundedAsync(root, stagedArgs, MaxDiffCharacters / 2, ct);
         var unstaged = await RunGitBoundedAsync(root, unstagedArgs, MaxDiffCharacters / 2, ct);
         var sb = new StringBuilder();
@@ -283,7 +302,7 @@ public sealed class GitReviewContext
     private static void EnsureReviewableSnapshot(RepositorySnapshot snapshot)
     {
         if (snapshot.ConflictCount > 0)
-            throw new InvalidOperationException("Resolve repository conflicts before preparing a review.");
+            throw new PreparationException(PreparationFailure.Conflicts);
     }
 
     private static bool IsConflictEntry(string entry) => entry.Length >= 2 &&
@@ -342,7 +361,7 @@ public sealed class GitReviewContext
     private static async Task<string> RunGitAsync(string root, IReadOnlyList<string> args, CancellationToken ct)
     {
         var (text, exitCode, error, _) = await RunGitCoreAsync(root, args, int.MaxValue, ct);
-        if (exitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "Git could not inspect the repository." : $"Git could not inspect the repository: {error.Trim()}");
+        if (exitCode != 0) throw new PreparationException(PreparationFailure.GitCommand);
         return text;
     }
 
@@ -355,65 +374,10 @@ public sealed class GitReviewContext
     private static async Task<(string Text, bool Truncated)> RunGitBoundedAsync(string root, IReadOnlyList<string> args, int limit, CancellationToken ct)
     {
         var (text, exitCode, error, truncated) = await RunGitCoreAsync(root, args, limit, ct);
-        if (exitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "Git could not construct review context." : $"Git could not construct review context: {error.Trim()}");
+        if (exitCode != 0) throw new PreparationException(PreparationFailure.GitCommand);
         return (text, truncated);
     }
 
-    private static async Task<(string Text, int ExitCode, string Error, bool Truncated)> RunGitCoreAsync(string root, IReadOnlyList<string> args, int charLimit, CancellationToken ct)
-    {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "git.exe", WorkingDirectory = root, UseShellExecute = false,
-                RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
-            }
-        };
-        foreach (var fixedArg in new[] { "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "diff.external=", "-c", "submodule.recurse=false" })
-            process.StartInfo.ArgumentList.Add(fixedArg);
-        foreach (var arg in args) process.StartInfo.ArgumentList.Add(arg);
-        process.StartInfo.Environment["GIT_PAGER"] = "cat";
-        process.StartInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
-        foreach (var key in new[] { "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_COUNT" })
-            process.StartInfo.Environment.Remove(key);
-        try
-        {
-            if (!process.Start()) throw new InvalidOperationException("Git could not be started.");
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            throw new InvalidOperationException("Git was not found. Install Git for Windows and try again.", ex);
-        }
-        using var timeout = new CancellationTokenSource(CommandTimeout);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
-        var stdoutTask = ReadBoundedAsync(process.StandardOutput, charLimit, linked.Token);
-        var stderrTask = process.StandardError.ReadToEndAsync(linked.Token);
-        try
-        {
-            await process.WaitForExitAsync(linked.Token);
-            var (text, truncated) = await stdoutTask;
-            return (text, process.ExitCode, await stderrTask, truncated);
-        }
-        catch (OperationCanceledException)
-        {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-            if (ct.IsCancellationRequested) throw;
-            throw new InvalidOperationException("Git took too long to prepare review context.");
-        }
-    }
-
-    private static async Task<(string Text, bool Truncated)> ReadBoundedAsync(StreamReader reader, int limit, CancellationToken ct)
-    {
-        var builder = new StringBuilder(Math.Min(limit, 8192));
-        var buffer = new char[8192];
-        var truncated = false;
-        int read;
-        while ((read = await reader.ReadAsync(buffer.AsMemory(), ct)) > 0)
-        {
-            var remaining = limit - builder.Length;
-            if (remaining > 0) builder.Append(buffer, 0, Math.Min(read, remaining));
-            if (read > remaining) truncated = true;
-        }
-        return (builder.ToString(), truncated);
-    }
+    private static Task<(string Text, int ExitCode, string Error, bool Truncated)> RunGitCoreAsync(string root, IReadOnlyList<string> args, int charLimit, CancellationToken ct) =>
+        GitRunner.RunAsync(root, args, charLimit, ct);
 }

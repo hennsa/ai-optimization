@@ -33,7 +33,11 @@ public sealed record ReviewDetails(ReviewRecord Record)
     public string ContextLabel => $"{ScopeLabel} · {Record.Branch} · HEAD {Short(Record.HeadSha)}";
     public string SeveritySummary => string.Join(" / ", new[] { "critical", "high", "medium", "low", "info" }
         .Select(s => (Severity: s, Count: Findings.Count(f => f.Severity == s))).Where(x => x.Count > 0).Select(x => $"{x.Count} {x.Severity}"));
-    public string SnapshotText => $"Repository: {Record.RepositoryPath}\nBranch: {Record.Branch}\nHEAD: {Record.HeadSha ?? "unavailable"}\nBase: {Record.BaseRef ?? "unavailable"}\nMerge base: {Record.MergeBaseSha ?? "unavailable"}\nChanged files: {Record.ChangedFileCount}\nSelected paths: {(Record.SelectedPaths.Count == 0 ? "none" : string.Join(", ", Record.SelectedPaths))}\nCopilot CLI: {Record.CopilotCliVersion}\nApp: {Record.AppVersion}\nModel: {Record.CopilotModel ?? "unavailable"}\nProfiles: {ProfileVersionsLabel}\nShared policy: v{Record.SharedPolicyVersion}\nFingerprint before: {Record.FingerprintBefore}\nFingerprint after: {Record.FingerprintAfter}\nDiff hash: {Record.DiffHash ?? "unavailable"}\nRun: {Record.Id}";
+    public string ChangeCounts => Record.TrackedChangedCount is int tracked && Record.UntrackedCount is int untracked
+        ? $"Tracked changes: {tracked}\nUntracked files: {untracked}"
+        : Record.SchemaVersion >= 3 ? "Tracked/untracked counts unavailable for this preparation."
+        : $"Legacy combined changed/untracked files: {Record.ChangedFileCount} (split not recorded)";
+    public string SnapshotText => $"Repository: {Record.RepositoryPath}\nBranch: {Record.Branch}\nHEAD: {Record.HeadSha ?? "unavailable"}\nBase: {Record.BaseRef ?? "unavailable"}\nMerge base: {Record.MergeBaseSha ?? "unavailable"}\n{ChangeCounts}\nSelected paths: {(Record.SelectedPaths.Count == 0 ? "none" : string.Join(", ", Record.SelectedPaths))}\nCopilot CLI: {Record.CopilotCliVersion}\nApp: {Record.AppVersion}\nModel: {Record.CopilotModel ?? "unavailable"}\nProfiles: {ProfileVersionsLabel}\nShared policy: v{Record.SharedPolicyVersion}\nFingerprint before: {Record.FingerprintBefore}\nFingerprint after: {Record.FingerprintAfter}\nDiff hash: {Record.DiffHash ?? "unavailable"}\nRun: {Record.Id}";
     public string ResultSummary => CanHandoff ? Record.Result.Summary : "";
     public string Limitations => CanHandoff ? string.Join("\n", Record.Result.Limitations) : "";
     public bool HasLimitations => Limitations.Length > 0;

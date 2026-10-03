@@ -83,6 +83,7 @@ public enum ReviewScope
 
 public sealed record ReviewInput
 {
+    public bool HasReviewableChanges { get; init; }
     public ProjectRegistration Project { get; init; } = new();
     public RepositorySnapshot Snapshot { get; init; } = new();
     public ReviewScope Scope { get; init; } = ReviewScope.WorkingChanges;
@@ -144,6 +145,8 @@ public sealed record ReviewRecord
     public string CopilotCliVersion { get; init; } = string.Empty;
     public string? CopilotModel { get; init; }
     public int ChangedFileCount { get; init; }
+    public int? TrackedChangedCount { get; init; }
+    public int? UntrackedCount { get; init; }
     public string? DiffHash { get; init; }
     public string FingerprintBefore { get; init; } = string.Empty;
     public string FingerprintAfter { get; init; } = string.Empty;
