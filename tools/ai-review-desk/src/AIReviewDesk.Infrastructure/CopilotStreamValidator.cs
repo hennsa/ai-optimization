@@ -8,8 +8,15 @@ public sealed class CopilotStreamValidator
 {
     private readonly HashSet<string> allowed;
     private readonly string? expectedModel;
-    public CopilotStreamValidator(IEnumerable<string>? expectedTools = null, string? expectedModel = null)
-    { allowed = new(expectedTools ?? CopilotContract.AllowedTools, StringComparer.Ordinal); this.expectedModel = expectedModel; }
+    private readonly string envelopeId;
+    private readonly bool discoverEnvelope;
+    public CopilotStreamValidator(IEnumerable<string>? expectedTools = null, string? expectedModel = null, string envelopeId = OutputEnvelope.RawJson, bool discoverEnvelope = false)
+    { allowed = new(expectedTools ?? CopilotContract.AllowedTools, StringComparer.Ordinal); this.expectedModel = expectedModel; this.envelopeId = envelopeId; this.discoverEnvelope = discoverEnvelope; }
+    public string? ObservedEnvelope { get; private set; }
+    public bool EnvelopePassed { get; private set; }
+    public bool JsonParsed { get; private set; }
+    public bool SchemaPassed { get; private set; }
+    public OutputEnvelopeObservation OutputObservation(string probe) => new(probe, ObservedEnvelope, OutputEnvelope.Version, EnvelopePassed, JsonParsed, SchemaPassed);
     public string[]? ObservedTools { get; private set; }
     public bool ContractDrift { get; private set; }
     public string? Invalid => invalid;
@@ -119,9 +126,39 @@ public sealed class CopilotStreamValidator
             if (!manifestSeen) throw new InvalidOperationException("The completed run has no usable tool manifest.");
             if (!disabledMcps.SetEquals(["github-mcp-server", "githubiq"])) throw new InvalidOperationException("Disabled built-in MCP evidence is missing.");
             if (expectedModel != null && Model == null) throw new InvalidOperationException("Requested model has no observed runtime model evidence.");
-            return ParseResult(response ?? throw new InvalidOperationException("Copilot returned no structured findings."));
+            return ParseFinalText(response ?? throw new InvalidOperationException("Copilot returned no structured findings."));
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException) { ContractDrift = true; throw; }
+    }
+
+    private ReviewResult ParseFinalText(string text)
+    {
+        var selected = envelopeId;
+        if (discoverEnvelope)
+        {
+            // Always attempt the canonical complete raw document first. Only a known exact
+            // presentation structure may then be classified; never search for JSON fragments.
+            try { using var canonical = JsonDocument.Parse(text); selected = OutputEnvelope.RawJson; }
+            catch (JsonException)
+            {
+                if (OutputEnvelope.TryExtractFence(text, out _)) selected = OutputEnvelope.SingleJsonFence;
+            }
+        }
+        ObservedEnvelope = selected;
+        if (selected == OutputEnvelope.RawJson && OutputEnvelope.TryExtractFence(text, out _))
+        {
+            ObservedEnvelope = OutputEnvelope.SingleJsonFence;
+            throw new InvalidOperationException("The model returned an output envelope that differs from its certified contract. Compatibility retesting is required.");
+        }
+        var payload = OutputEnvelope.Extract(text, selected);
+        EnvelopePassed = true;
+        try { using var document = JsonDocument.Parse(payload); JsonParsed = true; }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException(selected == OutputEnvelope.SingleJsonFence ? "The fenced JSON payload was malformed. No JSON repair is permitted." : "The raw JSON payload was malformed or contained text outside the JSON result. No JSON repair is permitted.");
+        }
+        try { var result = ParseResult(payload); SchemaPassed = true; return result; }
+        catch (InvalidOperationException) { throw new InvalidOperationException("The JSON payload did not satisfy the findings schema."); }
     }
 
     private void ValidateManifests(JsonElement data)

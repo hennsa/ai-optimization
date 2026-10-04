@@ -19,6 +19,11 @@ public sealed record ModelCertificate
     public string[] ExpectedTools { get; init; } = [];
     public string[] TechnicalTools { get; init; } = [];
     public string OutputContract { get; init; } = "";
+    // Schema-1 strict raw JSON evidence maps only to raw-json-v1. Never infer fenced support.
+    public string OutputEnvelopeId { get; init; } = OutputEnvelope.RawJson;
+    public int OutputEnvelopeVersion { get; init; } = OutputEnvelope.Version;
+    public OutputEnvelopeObservation[] EnvelopeObservations { get; init; } = [];
+    [JsonIgnore] public int SuccessfulEnvelopeObservations => EnvelopeObservations.Count(o => o.EnvelopeId == OutputEnvelopeId && o.EnvelopeVersion == OutputEnvelopeVersion && o.EnvelopePassed && o.JsonParsed && o.SchemaPassed);
     public CertificationProbe[] Probes { get; init; } = [];
     public CertificationStatus Status { get; init; }
     public string? FailureReason { get; init; }
@@ -35,8 +40,12 @@ public sealed record ModelCompatibility(CopilotModelChoice Model, CertificationS
     public bool CanTest => Model.Efforts.Count > 0 && Status is not (CertificationStatus.Testing or CertificationStatus.NoLongerAdvertised);
     public string TestLabel => Certificate == null ? "Test compatibility" : "Retest compatibility";
     public string Detail => $"Copilot reasoning: {string.Join(", ", Model.Efforts)}" + (Certificate == null ? "" :
-        $"\n{(Certificate.Source == "locally certified" && Status != CertificationStatus.Certified ? "local certification attempt" : Certificate.Source)} · CLI {Certificate.CliVersion} · {Certificate.TestedAt.LocalDateTime:g}\n{(Status == CertificationStatus.Certified ? "Certified" : "Tested")} reasoning: {string.Join(", ", Certificate.ReasoningEfforts)} · tools: {string.Join(", ", Certificate.ExpectedTools)}") + (Reason == null ? "" : $"\n{Reason}");
-    public string Evidence => Certificate == null ? "No certification evidence yet." : (Certificate.EvidenceNote == null ? "" : Certificate.EvidenceNote + "\n") + string.Join("\n", Certificate.Probes.Select(p => $"{p.Name}: {(p.Passed ? "passed" : "failed")}")) + (Certificate.Usage == null ? "" : "\n" + Certificate.Usage.Display);
+        $"\n{(Certificate.Source == "locally certified" && Status != CertificationStatus.Certified ? "local certification attempt" : Certificate.Source)} · CLI {Certificate.CliVersion} · {Certificate.TestedAt.LocalDateTime:g}\n{(Status == CertificationStatus.Certified ? "Certified" : "Tested")} reasoning: {string.Join(", ", Certificate.ReasoningEfforts)} · tools: {string.Join(", ", Certificate.ExpectedTools)}\nOutput: {OutputEnvelope.Label(Certificate.OutputEnvelopeId)}") + (Reason == null ? "" : $"\n{Reason}");
+    public string Evidence => Certificate == null ? "No certification evidence yet." : (Certificate.EvidenceNote == null ? "" : Certificate.EvidenceNote + "\n") +
+        $"Envelope contract: {Certificate.OutputEnvelopeId} · version {Certificate.OutputEnvelopeVersion}\nSchema contract: {Certificate.OutputContract}\nSuccessful envelope observations: {Certificate.SuccessfulEnvelopeObservations}" +
+        (Certificate.SchemaVersion == 1 ? (Certificate.Status == CertificationStatus.Certified ? " (legacy strict raw JSON evidence)" : " (legacy attempted raw JSON contract)") : "") + "\n" +
+        string.Join("\n", Certificate.EnvelopeObservations.Select(o => $"{o.Case}: {OutputEnvelope.Label(o.EnvelopeId)} · envelope {(o.EnvelopePassed ? "passed" : "failed")} · JSON {(o.JsonParsed ? "passed" : "failed")} · schema {(o.SchemaPassed ? "passed" : "failed")}")) + "\n" +
+        string.Join("\n", Certificate.Probes.Select(p => $"{p.Name}: {(p.Passed ? "passed" : "failed")}")) + (Certificate.Usage == null ? "" : "\n" + Certificate.Usage.Display);
 }
 
 public static class CertificationContract
@@ -60,8 +69,18 @@ public static class CertificationContract
     public static bool ToolCertified(string cli, string name, IEnumerable<ToolCapabilityCertificate> tools) => tools.Any(t => t.CliVersion == cli && t.ToolName == name && t.CapabilityContract == ToolVersion);
     public static string? InvalidReason(ModelCertificate c, string? cli, IEnumerable<ToolCapabilityCertificate> tools, string suite = SuiteVersion)
     {
-        if (c.SchemaVersion != 1 || c.CliVersion != cli || c.SuiteVersion != suite || c.AuthorityContract != AuthorityVersion || c.OutputContract != OutputVersion)
+        if (c.SchemaVersion is not (1 or 2) || c.CliVersion != cli || c.SuiteVersion != suite || c.AuthorityContract != AuthorityVersion || c.OutputContract != OutputVersion)
             return "CLI, certification suite or production contract changed.";
+        if (!OutputEnvelope.Supported(c.OutputEnvelopeId, c.OutputEnvelopeVersion) || c.SchemaVersion == 1 && c.OutputEnvelopeId != OutputEnvelope.RawJson)
+            return "The output envelope contract changed or has no certification evidence. Compatibility retesting is required.";
+        if (c.SchemaVersion == 2 && (c.SuccessfulEnvelopeObservations < (c.OutputEnvelopeId == OutputEnvelope.RawJson ? 2 : 3) ||
+            c.Probes.Any(p => !p.Passed) ||
+            !c.Probes.Any(p => p.Name == "stable output envelope" && p.Passed) ||
+            c.OutputEnvelopeId == OutputEnvelope.SingleJsonFence && new[] { "repeat zero findings", "repeat fingerprint integrity", "repeat usage metadata" }.Any(name => !c.Probes.Any(p => p.Name == name && p.Passed)) ||
+            c.EnvelopeObservations.Select(o => o.Case).Distinct().Count() != c.EnvelopeObservations.Length ||
+            !c.EnvelopeObservations.Any(o => o.Case == "zero findings" && o.SchemaPassed) || !c.EnvelopeObservations.Any(o => o.Case == "deliberate defect" && o.SchemaPassed) ||
+            c.EnvelopeObservations.Any(o => !o.EnvelopePassed || !o.JsonParsed || !o.SchemaPassed || o.EnvelopeId != c.OutputEnvelopeId || o.EnvelopeVersion != c.OutputEnvelopeVersion)))
+            return "Required stable output envelope evidence is missing.";
         if (c.ReasoningEfforts.Length == 0 || c.ExpectedTools.Length != 3 || c.ExpectedTools.Distinct().Count() != 3 ||
             !c.ExpectedTools.Contains("view") || !c.ExpectedTools.Contains("glob") || !c.ExpectedTools.All(t => ToolCertified(c.CliVersion, t, tools)) ||
             !c.TechnicalTools.SequenceEqual(new[] { "view", "grep", "glob" })) return "A required tool capability is unverified or its authority contract changed.";

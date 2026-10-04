@@ -168,7 +168,7 @@ public sealed partial class CopilotService
             // Recheck immediately before Process.Start. Same-user external writes remain a documented desktop trust assumption.
             if (CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath) != configuration) throw new InvalidOperationException("Copilot configuration changed during launch preparation.");
             CopilotGitHubCliIsolation.Inspect(CopilotContract.Detect()!, run);
-            validator = new CopilotStreamValidator(certificate?.ExpectedTools, record.RequestedExecution!.IsAutoModel ? null : record.RequestedExecution.ModelId);
+            validator = new CopilotStreamValidator(certificate?.ExpectedTools, record.RequestedExecution!.IsAutoModel ? null : record.RequestedExecution.ModelId, certificate?.OutputEnvelopeId ?? OutputEnvelope.RawJson);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(3));
             progress?.Report("Reviewing");

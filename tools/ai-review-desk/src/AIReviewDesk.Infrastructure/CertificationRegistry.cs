@@ -22,7 +22,8 @@ public sealed class CertificationRegistry(string? dataDirectory = null)
             CopilotStreamValidator.RequireUniqueProperties(document.RootElement);
             var state = document.Deserialize<State>(CertificationContract.JsonOptions)!;
             if (state.SchemaVersion != 1 || state.Models == null || state.Models.Length > 100 ||
-                state.Models.Any(c => c == null || c.SchemaVersion != 1 || string.IsNullOrWhiteSpace(c.ModelId) || c.ModelId.Length > 128 || (c.Source != "locally certified" && !(c.Source == "bundled certification" && c.Status == CertificationStatus.NeedsRetest)) ||
+                state.Models.Any(c => c == null || c.SchemaVersion is not (1 or 2) || string.IsNullOrWhiteSpace(c.ModelId) || c.ModelId.Length > 128 || (c.Source != "locally certified" && !(c.Source == "bundled certification" && c.Status == CertificationStatus.NeedsRetest)) ||
+                    c.OutputEnvelopeId == null || c.EnvelopeObservations == null || c.EnvelopeObservations.Length > 4 || c.EnvelopeObservations.Any(o => o == null || o.Case is not ("zero findings" or "deliberate defect" or "repeat zero findings")) ||
                     !Enum.IsDefined(c.Status) || c.ReasoningEfforts == null || c.ExpectedTools == null || c.TechnicalTools == null || c.Probes == null || c.Probes.Any(p => p == null || string.IsNullOrWhiteSpace(p.Name)) ||
                     c.ExpectedTools.Any(t => t == null) || c.TechnicalTools.Any(t => t == null) || c.ReasoningEfforts.Any(e => string.IsNullOrWhiteSpace(e))) ||
                 state.Models.Select(c => c.ModelId).Distinct().Count() != state.Models.Length) throw new InvalidOperationException();
@@ -78,7 +79,7 @@ public sealed class CertificationRegistry(string? dataDirectory = null)
         }
         finally { if (temp != null && File.Exists(temp)) File.Delete(temp); Gate.Release(); }
     }
-    public Task SuspendAsync(ModelCertificate c) => SaveAsync(c with { Status = CertificationStatus.NeedsRetest, FailureReason = "Runtime capability or strict output contract changed. Run compatibility testing again." });
+    public Task SuspendAsync(ModelCertificate c) => SaveAsync(c with { Status = CertificationStatus.NeedsRetest, FailureReason = "Runtime capability, output envelope or findings schema contract changed. Compatibility retesting is required." });
     public async Task ObserveDiscoveryAsync(IReadOnlyList<CopilotModelChoice> live)
     {
         var local = ReadLocal();
