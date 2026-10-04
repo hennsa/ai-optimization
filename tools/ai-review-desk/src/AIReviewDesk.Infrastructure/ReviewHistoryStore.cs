@@ -52,7 +52,7 @@ public sealed class ReviewHistoryStore
 
     private static ReviewRecord Normalize(ReviewRecord record)
     {
-        if (record.SchemaVersion is < 1 or > 3 || !Enum.IsDefined(record.Status) || !Enum.IsDefined(record.Scope) ||
+        if (record.SchemaVersion is < 1 or > 4 || !Enum.IsDefined(record.Status) || !Enum.IsDefined(record.Scope) ||
             record.Id == Guid.Empty || record.ProjectId == Guid.Empty || record.TimestampUtc == default)
             throw new InvalidOperationException("Invalid or unsupported review history record.");
         var result = new ReviewResult();
@@ -67,6 +67,8 @@ public sealed class ReviewHistoryStore
         return record with
         {
             Result = result,
+            RequestedExecution = record.SchemaVersion >= 4 ? record.RequestedExecution : null,
+            Usage = record.SchemaVersion >= 4 && record.Status == ReviewStatus.Completed ? NormalizeUsage(record.Usage) : null,
             TrackedChangedCount = record.SchemaVersion >= 3 ? record.TrackedChangedCount : null,
             UntrackedCount = record.SchemaVersion >= 3 ? record.UntrackedCount : null,
             SelectedPaths = record.SelectedPaths?.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray() ?? [],
@@ -74,5 +76,17 @@ public sealed class ReviewHistoryStore
             ProfileNames = record.ProfileNames ?? new Dictionary<string, string>(),
             ProfileVersions = record.ProfileVersions ?? new Dictionary<string, string>()
         };
+    }
+
+    private static ReviewUsage? NormalizeUsage(ReviewUsage? usage)
+    {
+        if (usage == null) return null;
+        if (usage.Models == null || usage.Models.Count > 20 || usage.NanoAiUnits < 0 || usage.PremiumRequestCost < 0 ||
+            usage.NanoAiUnits > 1_000_000_000_000_000_000m || usage.PremiumRequestCost > 1_000_000_000_000_000_000m ||
+            usage.Models.Any(m => m == null || !CopilotUsageParser.ValidModelId(m.Model) || m.InputTokens < 0 || m.OutputTokens < 0 || m.CacheReadTokens < 0 || m.CacheWriteTokens < 0 || m.ReasoningTokens < 0) ||
+            usage.Models.Select(m => m.Model).Distinct().Count() != usage.Models.Count)
+            return null;
+        var models = usage.Models.Where(m => m.InputTokens != null || m.OutputTokens != null || m.CacheReadTokens != null || m.CacheWriteTokens != null || m.ReasoningTokens != null).ToArray();
+        return models.Length == 0 && usage.NanoAiUnits == null && usage.PremiumRequestCost == null ? null : usage with { Models = models };
     }
 }

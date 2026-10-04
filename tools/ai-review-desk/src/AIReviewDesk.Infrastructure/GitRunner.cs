@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using Microsoft.Win32;
+using AIReviewDesk.Core;
 
 namespace AIReviewDesk.Infrastructure;
 
@@ -21,8 +22,6 @@ public sealed class PreparationException(PreparationFailure reason) : InvalidOpe
         _ => "The repository changed during preparation. Refresh and try again."
     };
 }
-
-public sealed class ReviewValidationException(string message) : InvalidOperationException(message);
 
 /// <summary>One process-wide absolute Git selection. No current-directory executable search.</summary>
 public static class GitExecutableLocator

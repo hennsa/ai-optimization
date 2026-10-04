@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using AIReviewDesk.Core;
 
 namespace AIReviewDesk.Infrastructure;
 
@@ -63,12 +64,28 @@ public static partial class CopilotContract
         return info;
     }
 
-    public static IReadOnlyList<string> ReviewArguments(string repository, string transientLogs) =>
+    public static IReadOnlyList<string> ReviewArguments(string repository, string transientLogs, ReviewExecutionSettings? execution = null, string? usageFile = null)
+    {
+        execution ??= new();
+        CopilotModelPolicy.Validate(execution, SupportedVersion);
+        var arguments = new List<string> { "--add-dir", Path.GetFullPath(repository) };
+        arguments.AddRange(AuthorityArguments);
+        arguments.AddRange(["--output-format", "json", "--stream", "on", "--log-level", "none", "--log-dir", transientLogs]);
+        if (!execution.IsAutoModel) arguments.AddRange(["--model", execution.ModelId]);
+        if (execution.ReasoningEffort != "auto") arguments.AddRange(["--reasoning-effort", execution.ReasoningEffort]);
+        if (usageFile != null) arguments.AddRange(["--usage-output-file", Path.GetFullPath(usageFile)]);
+        return arguments;
+    }
+
+    // No repository reach, agent session, prompts, SDK tools or credential callbacks.
+    public static IReadOnlyList<string> MetadataArguments(string transientLogs) =>
+        ["--headless", "--stdio", .. AuthorityArguments, "--log-level", "none", "--log-dir", transientLogs];
+
+    private static IReadOnlyList<string> AuthorityArguments =>
     [
-        "--add-dir", Path.GetFullPath(repository), "--disallow-temp-dir",
+        "--disallow-temp-dir",
         "--available-tools", "view,grep,glob", "--allow-tool", "view,grep,glob", "--deny-tool", DeniedTools,
         "--disable-builtin-mcps", "--no-custom-instructions", "--no-remote", "--no-remote-export",
-        "--no-ask-user", "--no-auto-update", "--no-eager-powershell-resolution", "--no-experimental",
-        "--output-format", "json", "--stream", "on", "--log-level", "none", "--log-dir", transientLogs
+        "--no-ask-user", "--no-auto-update", "--no-eager-powershell-resolution", "--no-experimental"
     ];
 }

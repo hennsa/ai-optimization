@@ -2,6 +2,8 @@
 
 ## Composition model
 
+Model and reasoning are execution settings, separate from reviewer policy. CLI 1.0.91 receives verified `--model <id>` / `--reasoning-effort <level>` overrides per review; Auto omits the respective flag. Preview displays them outside the prompt, history retains requested and observed values, and no profile changes technical authority. Project defaults and Review Again reuse these settings subject to the pinned capability policy and current account availability.
+
 The application composes the Shared Reviewer Policy exactly once, followed by each selected independent profile exactly once in built-in catalogue order, project/repository snapshot, scope, deterministic diff/context, and a separate structured output contract. Profiles are additive; they have no inheritance and never change technical authority, CLI permissions or access rules. A combination such as Security + Database / EF does not insert Standard implementation. Preview and execution use the same `PromptComposer.Compose` path.
 
 The shared policy and full built-in profile instructions are visible read-only in Profiles. Application/project defaults persist profile combinations and migrate older single-profile defaults. Run records retain profile IDs, captured display names and versions plus the shared-policy version. Older history without names shows the saved IDs and explicitly notes that names were not recorded; it does not borrow today's profile names or instructions. Historical prompts are not reconstructed. Review execution uses the accepted saved-account [production contract](copilot-integration-verification.md).

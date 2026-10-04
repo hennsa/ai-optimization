@@ -161,7 +161,8 @@ public sealed class RegistryStore
                 RepositoryPath = fullPath,
                 DefaultBase = string.IsNullOrWhiteSpace(project.DefaultBase) ? null : project.DefaultBase.Trim(),
                 DefaultProfileId = profileId,
-                DefaultProfileIds = NormalizeProfiles(project.DefaultProfileIds, profileId, rejectDuplicatePaths, corrections)
+                DefaultProfileIds = NormalizeProfiles(project.DefaultProfileIds, profileId, rejectDuplicatePaths, corrections),
+                DefaultExecution = NormalizeExecution(project.DefaultExecution, rejectDuplicatePaths, corrections)
             });
         }
 
@@ -198,6 +199,18 @@ public sealed class RegistryStore
             if (saving) throw new InvalidOperationException("Choose one or more known default review profiles.");
             corrections.Add("Invalid default review profiles were reset to Standard implementation.");
             return ["standard"];
+        }
+    }
+
+    private static ReviewExecutionSettings NormalizeExecution(ReviewExecutionSettings? execution, bool saving, List<string> corrections)
+    {
+        execution ??= CopilotModelPolicy.Default;
+        try { CopilotModelPolicy.Validate(execution, CopilotModelPolicy.Version); return execution; }
+        catch (ReviewValidationException)
+        {
+            if (saving) throw;
+            corrections.Add("Unavailable project model/reasoning defaults were reset to the verified application defaults.");
+            return CopilotModelPolicy.Default;
         }
     }
 

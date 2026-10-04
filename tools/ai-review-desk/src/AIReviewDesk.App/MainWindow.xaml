@@ -132,6 +132,13 @@
       <ComboBox x:Name="ScopePicker" SelectedValue="{Binding Scope, Mode=OneWay}" Width="300" HorizontalAlignment="Left" SelectionChanged="OnReviewInputChanged" Margin="0,8,0,16" />
       <TextBlock Text="Choose changed paths" Style="{StaticResource SectionTitle}" Visibility="{Binding IsSelectedPaths, Converter={StaticResource BoolVisibility}}" />
       <ListBox x:Name="ChangedPaths" ItemsSource="{Binding ReviewPaths}" SelectionMode="Extended" DisplayMemberPath="Display" Height="150" Visibility="{Binding IsSelectedPaths, Converter={StaticResource BoolVisibility}}" SelectionChanged="OnReviewInputChanged" />
+      <WrapPanel IsEnabled="{Binding Interactive}" Margin="0,0,0,8">
+       <StackPanel Margin="0,0,16,8"><TextBlock Text="Model" Margin="0,0,0,6" /><ComboBox ItemsSource="{Binding Models}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedModel, Mode=TwoWay}" MinWidth="220" AutomationProperties.Name="Review model" /></StackPanel>
+       <StackPanel Margin="0,0,0,8"><TextBlock Text="Reasoning" Margin="0,0,0,6" /><ComboBox ItemsSource="{Binding EffortChoices}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedReasoningChoice, Mode=TwoWay}" MinWidth="140" AutomationProperties.Name="Review reasoning" /></StackPanel>
+      </WrapPanel>
+      <TextBlock Text="{Binding AutoExplanation}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,6" />
+      <TextBlock Text="{Binding ReasoningHint}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,6" />
+      <TextBlock Text="{Binding ExecutionNotice}" TextWrapping="Wrap" Margin="0,0,0,12" />
       <TextBlock Text="Choose one or more review profiles" Style="{StaticResource SectionTitle}" Margin="0,20,0,8" />
       <ItemsControl ItemsSource="{Binding ProfileChoices}"><ItemsControl.ItemTemplate><DataTemplate>
        <CheckBox Content="{Binding Profile.Name}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="0,4" />
@@ -162,6 +169,8 @@
         <TextBlock Text="{Binding Details.SeveritySummary}" FontWeight="SemiBold" Margin="0,4,0,0" />
         <TextBlock Text="{Binding Details.ContextSummary}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0" />
         <TextBlock Text="{Binding Details.ProfilesLabel}" TextWrapping="Wrap" Margin="0,4,0,8" />
+        <TextBlock Text="{Binding Details.ExecutionText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+        <Expander Header="Review usage" Visibility="{Binding Details.HasUsage, Converter={StaticResource BoolVisibility}}" HorizontalContentAlignment="Stretch" Margin="0,0,0,8"><TextBlock Text="{Binding Details.UsageText}" TextWrapping="Wrap" Margin="8" /></Expander>
         <TextBlock Text="{Binding Details.Outcome}" TextWrapping="Wrap" Margin="0,8,0,8" />
         <TextBlock Text="{Binding Details.ResultSummary}" TextWrapping="Wrap" Margin="0,0,0,12" />
         <WrapPanel Margin="0,0,0,12">
@@ -257,6 +266,8 @@
        <TextBlock Text="Copilot account" Style="{StaticResource SectionTitle}" />
        <TextBlock Text="{Binding AccountStatus}" FontWeight="SemiBold" Margin="0,0,0,8" />
        <TextBlock Text="{Binding AccountDetail}" Style="{StaticResource Caption}" />
+       <TextBlock Text="Copilot usage" FontWeight="SemiBold" Margin="0,16,0,8" />
+       <TextBlock Text="{Binding CopilotUsage}" TextWrapping="Wrap" Style="{StaticResource Caption}" />
        <WrapPanel Margin="0,12,0,0">
         <ui:Button Content="Refresh status" Click="OnRefreshAccount" Margin="0,0,8,6" />
          <ui:Button Content="Sign in with GitHub" IsEnabled="{Binding CanSignIn}" ToolTip="Opens the official Copilot browser sign-in flow when setup checks pass." Click="OnSignIn" Margin="0,0,8,6" />

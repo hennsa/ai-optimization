@@ -18,6 +18,11 @@
    <Label Content="Default base branch or ref" Target="{Binding ElementName=BaseInput}" Padding="0,0,0,7" />
    <ComboBox x:Name="BaseInput" IsEditable="True" IsTextSearchEnabled="False" AutomationProperties.Name="Default base branch or ref" />
    <TextBlock Text="Choose a local ref, or enter one to use after it becomes available. Leave blank for automatic selection. No remotes are fetched." Style="{StaticResource Caption}" FontSize="12" Margin="0,7,0,16" />
+   <TextBlock Text="Default model" Margin="0,0,0,6" />
+   <ComboBox x:Name="ModelInput" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="OnModelChanged" AutomationProperties.Name="Default model" Margin="0,0,0,12" />
+   <TextBlock Text="Default reasoning" Margin="0,0,0,6" />
+   <ComboBox x:Name="EffortInput" DisplayMemberPath="Name" SelectedValuePath="Id" AutomationProperties.Name="Default reasoning" Margin="0,0,0,8" />
+   <TextBlock x:Name="ExecutionNote" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,16" />
    <TextBlock Text="Default review profiles" FontWeight="SemiBold" Margin="0,12,0,7" />
    <TextBlock Text="Selected profiles are combined for each review." Style="{StaticResource Caption}" Margin="0,0,0,6" />
    <ItemsControl x:Name="ProfileInput"><ItemsControl.ItemTemplate><DataTemplate>

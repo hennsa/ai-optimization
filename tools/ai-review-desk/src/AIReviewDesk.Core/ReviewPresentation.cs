@@ -28,6 +28,11 @@ public sealed record ReviewDetails(ReviewRecord Record)
         Record.ProfileNames.TryGetValue(id, out var name) ? name : $"{id} (name not recorded)"));
     public string ProfileVersionsLabel => string.Join(" · ", Record.ProfileIds.Select(id =>
         Record.ProfileVersions.TryGetValue(id, out var version) ? $"{id} v{version}" : $"{id}: version not recorded"));
+    public string ExecutionText => (Record.RequestedExecution is { } requested
+        ? $"Requested model: {CopilotModelPolicy.DisplayName(requested.ModelId)} ({requested.ModelId}; {(requested.IsAutoModel ? "no override" : "explicit")})\nRequested reasoning: {CopilotModelPolicy.EffortName(requested.ReasoningEffort)}"
+        : "Requested model/reasoning: not recorded") + $"\nObserved model: {Record.CopilotModel ?? "unavailable"}\nObserved reasoning: not reported by CLI 1.0.91";
+    public string UsageText => Record.Usage?.Display ?? "";
+    public bool HasUsage => Record.Usage != null;
     public string TimeLabel => Record.TimestampUtc.LocalDateTime.ToString("g");
     public string ContextSummary => $"{TimeLabel} · {Record.ProjectName} · {ScopeLabel}";
     public string ContextLabel => $"{ScopeLabel} · {Record.Branch} · HEAD {Short(Record.HeadSha)}";
@@ -82,9 +87,9 @@ public static class FindingFilter
     }
 }
 
-public sealed record ReusedReviewSetup(ReviewScope Scope, IReadOnlyList<string> ProfileIds, IReadOnlyList<string> SelectedPaths, string Message)
+public sealed record ReusedReviewSetup(ReviewScope Scope, IReadOnlyList<string> ProfileIds, IReadOnlyList<string> SelectedPaths, string Message, ReviewExecutionSettings? Execution = null)
 {
-    public static ReusedReviewSetup From(ReviewRecord record, IReadOnlyList<string> currentChangedPaths, bool hasBase)
+    public static ReusedReviewSetup From(ReviewRecord record, IReadOnlyList<string> currentChangedPaths, bool hasBase, IReadOnlyList<CopilotModelChoice>? models = null)
     {
         var profiles = BuiltInProfiles.All.Where(p => record.ProfileIds.Contains(p.Id, StringComparer.OrdinalIgnoreCase)).Select(p => p.Id).ToArray();
         var paths = record.Scope == ReviewScope.SelectedPaths
@@ -94,6 +99,9 @@ public sealed record ReusedReviewSetup(ReviewScope Scope, IReadOnlyList<string> 
         if (record.Scope == ReviewScope.BranchVsBase && !hasBase) messages.Add("No current base is available; scope changed to Working changes.");
         if (paths.Length < record.SelectedPaths.Count && record.Scope == ReviewScope.SelectedPaths) messages.Add("Paths outside the current changed set were cleared. Choose changed paths if needed.");
         if (profiles.Length < record.ProfileIds.Count) messages.Add("Unavailable profiles were cleared. Choose at least one current profile.");
-        return new(scope, profiles, paths, string.Join(" ", messages));
+        var execution = CopilotModelPolicy.Adjust(record.RequestedExecution ?? new(), models ?? CopilotModelPolicy.Verified, out var adjustment);
+        if (adjustment != null) messages.Add(adjustment);
+        if (record.RequestedExecution == null) messages.Add("This legacy review did not record requested execution settings; using Auto.");
+        return new(scope, profiles, paths, string.Join(" ", messages), execution);
     }
 }

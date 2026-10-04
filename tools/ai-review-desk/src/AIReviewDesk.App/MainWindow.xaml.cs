@@ -119,7 +119,7 @@ public partial class MainWindow : FluentWindow
         {
             prompt = await ViewModel.PreparePromptAsync(CurrentScope(), SelectedPaths());
         });
-        if (!string.IsNullOrWhiteSpace(prompt)) new PromptPreviewWindow(prompt) { Owner = this }.ShowDialog();
+        if (!string.IsNullOrWhiteSpace(prompt)) new PromptPreviewWindow(prompt, ViewModel.ExecutionDisplay) { Owner = this }.ShowDialog();
     }
 
     private async void OnStartReview(object sender, RoutedEventArgs e) => await ViewModel.StartReviewAsync(CurrentScope(), SelectedPaths());
@@ -195,7 +195,7 @@ public partial class MainWindow : FluentWindow
                 DefaultProfileId = (ViewModel.State.DefaultProfileIds ?? [ViewModel.State.DefaultProfileId]).FirstOrDefault() ?? "standard",
                 DefaultProfileIds = (ViewModel.State.DefaultProfileIds ?? [ViewModel.State.DefaultProfileId]).ToList()
             };
-            var dialog = new ProjectDialog(project, snapshot.BaseCandidates, true) { Owner = this };
+            var dialog = new ProjectDialog(project, snapshot.BaseCandidates, true, ViewModel.Models) { Owner = this };
             if (dialog.ShowDialog() == true)
                 await ViewModel.ExecuteAsync(() => ViewModel.SaveProjectAsync(dialog.Result!, true));
             return;
@@ -232,7 +232,7 @@ public partial class MainWindow : FluentWindow
     private async void OnEdit(object sender, RoutedEventArgs e) => await ViewModel.ExecuteAsync(async () =>
     {
         if (ViewModel.Selected == null) return;
-        var dialog = new ProjectDialog(ViewModel.Selected, ViewModel.Snapshot?.BaseCandidates ?? [], false) { Owner = this };
+        var dialog = new ProjectDialog(ViewModel.Selected, ViewModel.Snapshot?.BaseCandidates ?? [], false, ViewModel.Models) { Owner = this };
         if (dialog.ShowDialog() == true) await ViewModel.SaveProjectAsync(dialog.Result!, false);
     });
 

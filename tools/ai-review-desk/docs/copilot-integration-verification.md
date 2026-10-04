@@ -353,3 +353,59 @@ Final full Release suite: **185 passed, 0 failed, 0 skipped**, including **39 ad
 The original app registry and recovery backup were restored byte-for-byte. Only seven task-owned acceptance records and the checked disposable fixture/harness directory were removed. No credentials or raw streams were copied/persisted for acceptance. The runner diff consists only of schema/profile-name capture; constrained invocation, configuration scanning, environment isolation, authentication, fingerprinting, cancellation and JSONL/tool/MCP/terminal validation are unchanged. No security contract was weakened or reinvestigated. Final whitespace/diff/secret/artifact and source-control checks are recorded in the delivery response.
 
 **Delegation: none.** Primary model/effort unavailable (not authoritatively exposed).
+
+## Model, reasoning and usage slice — 2026-10-03
+
+Local Windows **CLI 1.0.91** help, its shipped runtime/SDK implementation, account metadata and small disposable reviews establish this contract. Current public documentation was used as an investigation lead, not substituted for pinned-version evidence. No model setting was written to the dedicated profile.
+
+`--model <model>` accepts exact IDs. `--reasoning-effort <level>` has a CLI-wide union of `none,minimal,low,medium,high,xhigh,max`; individual models accept narrower sets. The authenticated runtime's `models.list` returned Auto and these 15 explicit models:
+
+| Account model IDs | Advertised explicit efforts |
+| --- | --- |
+| `claude-sonnet-5`, `claude-sonnet-5.5` | low, medium, high, xhigh, max |
+| `claude-haiku-4.5` | none advertised; explicit High rejected before model output |
+| `gpt-6-luna`, `gpt-5.6-terra`, `gpt-5.6-luna` | none, low, medium, high, xhigh, max |
+| `gpt-5.4`, `gpt-5.4-mini` | none, low, medium, high, xhigh |
+| `gpt-5.3-codex` | low, medium, high, xhigh |
+| `gpt-5-mini`, `mai-code-1.1-flash`, `grok-4.5` | low, medium, high |
+| `kimi-k3` | low, high, max |
+| `grok-4.6`, `grok-4.7` | low, medium, high, xhigh |
+
+Account availability is not production certification. **GPT-6 Luna / High** twice emitted `view,rg,glob`, violating the accepted exact `view,grep,glob` rule, and was rejected. **Haiku / Auto** twice preserved the exact tools but returned fenced JSON, rejected by the unchanged strict result parser. Other advertised models were not exhaustively exercised or admitted. Sol/Astra were absent. The small production table therefore permits **Auto, Claude Sonnet 5 and Claude Sonnet 5.5**, with Sonnet efforts **Auto/Low/Medium/High/Extra high/Max**. It is explicitly pinned to 1.0.91 and intersected with current account model availability, policy state and advertised efforts. Unknown CLI versions, models and combinations fail clearly.
+
+The verified application fallback is **Claude Sonnet 5.5 / High**, since the preferred Sol choice is unavailable and Luna fails the authority contract. New Review loads project model/reasoning defaults and allows a per-review override. Changing model preserves a valid effort or selects Auto with an explanation. **Auto model omits both override flags; Auto reasoning on an explicit model omits only the effort flag.** The app does not secretly pick a model for Auto. Prompt Preview shows execution settings outside the prompt; prompt composition and policy text are unchanged.
+
+Schema **4** additively records requested exact model ID/effort, explicit-versus-Auto selection, existing CLI version, observed runtime model and optional structured usage. Schemas **1/2/3** remain readable without rewriting or fabricating requested settings. `session.tools_updated`/usage-checkpoint model evidence supplies the observed model; Auto was observed as `claude-sonnet-5`, while explicit Sonnet 5.5 remained Sonnet 5.5. Requested and observed are separate fields, so a runtime substitution can be represented without assuming equality. No effective reasoning level is reported. Review Again reuses supported requested settings, scope and profiles, explains any fallback, and always prepares fresh context.
+
+### Usage, quota and the credential boundary
+
+The terminal JSONL result reports premium-request cost and durations but not the full token breakdown. The verified **`--usage-output-file <app-owned file>`** writes structured final JSON, surviving process exit until the app deletes its ephemeral run. `modelMetrics[model].usage` exposes input/output/cache-read/cache-write/reasoning token counts; input includes cache. `totalPremiumRequestCost` and `totalNanoAiu` are distinct actual totals. The shipped native `responseLimitsNanoAiuToAiCredits` function confirmed **1,000,000,000 nano-AI units = 1 AI credit**. The app preserves emitted totals and missing values, never estimates tokens or infers credits from tokens. Accepted completed reviews retain compact usage; malformed/unavailable metadata is omitted. `/usage` is interactive-only in this version; no separate noninteractive usage command was found or terminal UI scraped.
+
+The [official SDK usage documentation](https://github.com/github/copilot-sdk/blob/main/docs/features/usage-and-billing.md) describes `account.getQuota`, while [its client implementation](https://github.com/github/copilot-sdk/blob/main/nodejs/src/client.ts) supports a CLI process using saved authentication without a supplied token. The SDK shipped inside this installed CLI was inspected and exercised: **protocol 3**, runtime `status.get` version **1.0.91**, supported `models.list` and `account.getQuota`, empty connection parameters and no agent session. This works with the existing dedicated saved-account profile without extracting or supplying credentials.
+
+Production uses a narrow C# adapter to those supported SDK RPCs, rather than adding an unpinned SDK dependency or replacing the hardened review runner. Its allowlist is only `connect,status.get,models.list,account.getQuota`; it rejects incoming server requests and other client methods, validates bounded framed JSON and version/protocol, discards stderr, times out and kills the entire process tree. Each refresh starts a separate process in an app-owned empty cwd, with the existing cleared environment, structural/machine/fallback checks and authority restrictions, **without `--add-dir` or a session/prompt**. It exposes no token, auth callback, credential-reading or agent API. No OAuth values were read, decoded, returned, logged, persisted, injected or copied.
+
+The live `premium_interactions` quota snapshot exposed entitlement, used amount, remaining percentage, allowance type and unlimited status. `tokenBasedBilling=true` identifies **AI credits** for this account; false uses **Premium requests**. Quota is kept only in memory, separate from per-review consumption. Settings shows the actual unit, remaining percentage and used/entitlement, check time and Refresh status; failure shows a concise unavailable message, never guessed zeroes. **Reset date is unavailable:** the pinned runtime returned the fetch timestamp as `resetDate`, also described by the [official SDK issue](https://github.com/github/copilot-sdk/issues/2619), so it is deliberately neither persisted nor displayed as a reset. No account identity/credential API was added.
+
+`--max-ai-credits <credits>` exists in local help. The pinned limits help describes a minimum of **30 AI credits**, a soft ceiling checked after a response, and blocking the next model call after exceeding it. This optional ceiling was **not implemented or live-verified**; model selection and truthful usage took priority.
+
+### Controlled review evidence
+
+All cases used the same tiny disposable Counter repository and saved dedicated account, with production authority flags, exact JSONL/tool/MCP/terminal validation and before/after fingerprints. No substantial model sweep was performed.
+
+| Invocation | Evidence |
+| --- | --- |
+| Auto / Auto (diagnostic and production runner) | Completed; observed Sonnet 5; structured usage; production schema-4 history reopened with requested Auto and observed Sonnet 5. |
+| Sonnet 5.5 / High | Completed, exact tools, stable fingerprint; establishes application fallback. |
+| Sonnet 5.5 / Low (production and Release WPF Review Again) | Completed, exact tools, stable fingerprints; requested Low and observed Sonnet 5.5 persisted with token/cache/credit usage. |
+| Luna / High, twice | Rejected exact-tool mismatch; no accepted result. |
+| Haiku / High | Exit 1 before model events; unsupported effort. |
+| Sonnet 5 / High (once); Haiku / Auto (twice) | Exact tools but fenced JSON rejected; no markdown stripping or validation relaxation. |
+
+The successful WPF Review Again retained Sonnet 5.5 / Low and Standard implementation, then previewed a newly added fixture marker and completed from that fresh snapshot. Project defaults were saved as Sonnet 5.5 / Medium and prepopulated New Review; override did not modify project defaults. Manual verification found and fixed WPF selection clearing when refreshed model records replaced an ItemsSource; stable observable collections and current choice objects now preserve visible selections. History visibly separates requested and observed, labels observed reasoning unavailable, and expands actual review usage. Settings Refresh fetched a fresh allowance with the actual unit and no fabricated reset date. The prior project-list, scrolling and history/preview behaviors are retained.
+
+Final Release executable verification showed only Auto/Sonnet 5/Sonnet 5.5, project Medium defaults, readable wrapping at **960 × 660**, and explained Auto/Auto fallback with invalid efforts absent. A labelled synthetic metadata-unavailable fixture in the actual Release WPF window verified the concise unavailable message; it is not claimed as a live account failure. Release WPF acceptance hosts used the application assembly and real production runner; the final executable independently verified selectors, navigation, reopening and resizing.
+
+Full automated Release suite: **247 passed, 0 failed, 0 skipped** in 44 seconds, **40 added cases** covering capabilities/version pinning, account intersection, authority-preserving flags, credential/agent RPC rejection, bounded transport, project defaults/prepopulation, binding refresh, reuse/fresh context, schema 1–4/requested-versus-observed persistence, emitted/absent/malformed usage and truthful quota states/presentation. Release solution build: **0 errors**, with two emissions of the existing **NU1900** vulnerability-feed warning. Final diff/whitespace and introduced-secret/artifact checks passed. Scanner/preflight still reports supported 1.0.91, unblocked configuration, credential-field false and saved account metadata true; no account flow, credential copy, profile model write or unsafe real-profile test configuration was introduced. Original registry/recovery backup were restored byte-for-byte, all four task-owned history files removed and app-owned Runs empty. The checked task-owned probe/helper/fixture tree was removed after stopping its helper and shutting down build servers to release the last DLL handle. Source-control delivery details are recorded in the completion response.
+
+**Delegation: none.** Primary model/effort unavailable (not authoritatively exposed).

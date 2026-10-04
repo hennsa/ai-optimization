@@ -11,6 +11,7 @@ public sealed record ProjectRegistration
     // settings use DefaultProfileIds; registry migration can populate it from this value.
     public string DefaultProfileId { get; init; } = "standard";
     public List<string>? DefaultProfileIds { get; init; }
+    public ReviewExecutionSettings DefaultExecution { get; init; } = CopilotModelPolicy.Default;
 }
 
 public sealed record AppState
@@ -144,6 +145,8 @@ public sealed record ReviewRecord
     public string AppVersion { get; init; } = string.Empty;
     public string CopilotCliVersion { get; init; } = string.Empty;
     public string? CopilotModel { get; init; }
+    public ReviewExecutionSettings? RequestedExecution { get; init; }
+    public ReviewUsage? Usage { get; init; }
     public int ChangedFileCount { get; init; }
     public int? TrackedChangedCount { get; init; }
     public int? UntrackedCount { get; init; }

@@ -31,6 +31,11 @@ public sealed class DeskViewModel : ObservableObject
     private bool historyList = true;
     private string severityFilter = "All", certaintyFilter = "All", categoryFilter = "All", findingSearch = "";
     private FindingItem? selectedFinding;
+    private ReviewExecutionSettings execution = CopilotModelPolicy.Default;
+    private readonly ObservableCollection<CopilotModelChoice> models = new(CopilotModelPolicy.Verified);
+    private string executionNotice = "";
+    private CopilotMetadata metadata = CopilotMetadata.Unavailable;
+    private readonly ObservableCollection<EffortChoice> effortChoices = new(CopilotModelPolicy.Efforts(CopilotModelPolicy.Default.ModelId).Select(e => new EffortChoice(e, CopilotModelPolicy.EffortName(e))));
 
     public DeskViewModel(string? dataDirectory = null)
     {
@@ -40,6 +45,54 @@ public sealed class DeskViewModel : ObservableObject
     }
 
     public ObservableCollection<ProjectRegistration> Projects { get; } = [];
+    public IReadOnlyList<CopilotModelChoice> Models => models;
+    public IReadOnlyList<EffortChoice> EffortChoices => effortChoices;
+    public CopilotModelChoice? SelectedModel { get => models.FirstOrDefault(m => m.Id == execution.ModelId); set { if (value != null) SelectedModelId = value.Id; } }
+    public EffortChoice? SelectedReasoningChoice { get => effortChoices.FirstOrDefault(e => e.Id == execution.ReasoningEffort); set { if (value != null) SelectedEffort = value.Id; } }
+    public string SelectedModelId
+    {
+        get => execution.ModelId;
+        set
+        {
+            if (value == null || value == execution.ModelId || !models.Any(m => m.Id == value)) return;
+            var requested = execution with { ModelId = value };
+            ApplyExecution(CopilotModelPolicy.Adjust(requested, models, out var adjustment));
+            ExecutionNotice = adjustment ?? "";
+        }
+    }
+    public string SelectedEffort
+    {
+        get => execution.ReasoningEffort;
+        set
+        {
+            if (value == null || !EffortChoices.Any(e => e.Id == value) || value == execution.ReasoningEffort) return;
+            ApplyExecution(execution with { ReasoningEffort = value }); ExecutionNotice = "";
+        }
+    }
+    public ReviewExecutionSettings Execution => execution;
+    public string ExecutionDisplay => execution.Display;
+    public string AutoExplanation => CopilotModelPolicy.AutoExplanation;
+    public string ExecutionNotice { get => executionNotice; private set => SetProperty(ref executionNotice, value); }
+    public string ReasoningHint => execution.IsAutoModel ? "Choose an explicit model to override reasoning. Auto leaves both settings to the CLI." : EffortChoices.Count == 1 ? "This model exposes no reasoning override; Auto is required." : "Only this model's verified reasoning levels are shown. Auto passes no effort override.";
+    public string CopilotUsage => metadata.UsageDisplay;
+    private void ApplyExecution(ReviewExecutionSettings value)
+    {
+        execution = value;
+        var efforts = models.FirstOrDefault(m => m.Id == execution.ModelId)?.Efforts ?? ["auto"];
+        effortChoices.Clear();
+        foreach (var effort in efforts) effortChoices.Add(new(effort, CopilotModelPolicy.EffortName(effort)));
+        foreach (var name in new[] { nameof(SelectedModelId), nameof(SelectedModel), nameof(EffortChoices), nameof(SelectedEffort), nameof(SelectedReasoningChoice), nameof(ExecutionDisplay), nameof(ReasoningHint) }) OnPropertyChanged(name);
+        InvalidateReviewInput();
+    }
+    internal void SetMetadata(CopilotMetadata value)
+    {
+        var requested = execution;
+        metadata = value; models.Clear();
+        foreach (var model in value.Models) models.Add(model);
+        OnPropertyChanged(nameof(Models)); OnPropertyChanged(nameof(CopilotUsage));
+        ApplyExecution(CopilotModelPolicy.Adjust(requested, models, out var adjustment));
+        ExecutionNotice = adjustment ?? "";
+    }
     public IReadOnlyList<ReviewProfile> Profiles => BuiltInProfiles.All;
     public ObservableCollection<ProfileChoice> ProfileChoices { get; } = [];
     public ObservableCollection<ReviewPathChoice> ReviewPaths { get; } = [];
@@ -140,6 +193,7 @@ public sealed class DeskViewModel : ObservableObject
         Selected = Projects.FirstOrDefault(p => p.Id == state.SelectedProjectId) ?? Projects.FirstOrDefault();
         ready = true;
         RebuildProfileChoices(state.DefaultProfileIds ?? [state.DefaultProfileId]);
+        LoadProjectProfiles(Selected);
         OnPropertyChanged(nameof(Interactive));
         if (Selected != null) { await LoadHistoryAsync(Selected.Id); await RefreshAsync(); }
         await RefreshAccountAsync();
@@ -236,6 +290,8 @@ public sealed class DeskViewModel : ObservableObject
     {
         var ids = project?.DefaultProfileIds ?? [project?.DefaultProfileId ?? "standard"];
         foreach (var choice in ProfileChoices) choice.IsSelected = ids.Contains(choice.Profile.Id, StringComparer.OrdinalIgnoreCase);
+        ApplyExecution(CopilotModelPolicy.Adjust(project?.DefaultExecution ?? CopilotModelPolicy.Default, models, out var adjustment));
+        ExecutionNotice = adjustment ?? "";
         InvalidateReviewInput();
     }
 
@@ -282,6 +338,7 @@ public sealed class DeskViewModel : ObservableObject
         if (Selected == null) throw new InvalidOperationException("Choose a project before preparing a review.");
         var profileIds = SelectedProfileIds();
         if (profileIds.Count == 0) throw new ReviewValidationException("Choose at least one review profile.");
+        CopilotModelPolicy.Validate(execution, CopilotModelPolicy.Version, models);
         Scope = forScope;
         preparedInput = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, preview: true, progress: new Progress<string>(message => ReviewProgress = message));
         OnPropertyChanged(nameof(ReviewInputReady));
@@ -309,10 +366,12 @@ public sealed class DeskViewModel : ObservableObject
         OnPropertyChanged(nameof(IsReviewRunning));
         OnPropertyChanged(nameof(Interactive));
         var cancellationToken = reviewCancellation.Token;
+        var selectedExecution = execution;
         try
         {
             var profileIds = SelectedProfileIds();
             if (profileIds.Count == 0) throw new ReviewValidationException("Choose at least one review profile.");
+            CopilotModelPolicy.Validate(selectedExecution, CopilotModelPolicy.Version, models);
             // Always prepare afresh for execution; a preview is an audit snapshot, not execution authority.
             var input = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, cancellationToken, progress: new Progress<string>(message => ReviewProgress = message));
             Snapshot = input.Snapshot;
@@ -322,7 +381,7 @@ public sealed class DeskViewModel : ObservableObject
             ReviewProgress = "Preparing prompt";
             _ = PromptComposer.Compose(input, profileIds);
             var progress = new Progress<string>(message => ReviewProgress = message);
-            var record = await copilot.RunAsync(input, profileIds, progress, cancellationToken);
+            var record = await copilot.RunAsync(input, profileIds, progress, cancellationToken, selectedExecution);
             ShowHistoryRecord(record);
             await history.SaveAsync(record);
             await LoadHistoryAsync(record.ProjectId);
@@ -386,7 +445,7 @@ public sealed class DeskViewModel : ObservableObject
         var profiles = Profiles.Where(p => SelectedProfileIds().Contains(p.Id)).ToArray();
         var record = new ReviewRecord
         {
-            SchemaVersion = 3, ProjectId = Selected.Id, ProjectName = Selected.DisplayName, RepositoryPath = Selected.RepositoryPath,
+            SchemaVersion = 4, RequestedExecution = execution, ProjectId = Selected.Id, ProjectName = Selected.DisplayName, RepositoryPath = Selected.RepositoryPath,
             Scope = forScope, SelectedPaths = forScope == ReviewScope.SelectedPaths ? paths : [],
             Branch = Snapshot?.Branch ?? "", HeadSha = Snapshot?.HeadSha, BaseRef = Snapshot?.BaseRef, MergeBaseSha = Snapshot?.MergeBaseSha,
             ChangedFileCount = Snapshot?.ChangedFileCount ?? 0, TrackedChangedCount = Snapshot?.TrackedChangedCount, UntrackedCount = Snapshot?.UntrackedCount, ProfileIds = profiles.Select(p => p.Id).ToArray(),
@@ -424,8 +483,9 @@ public sealed class DeskViewModel : ObservableObject
         OnPropertyChanged(nameof(NoFilterMatches)); OnPropertyChanged(nameof(FilterCount));
     }
 
-    public void ShowNewReviewForm()
+    public void ShowNewReviewForm(bool useDefaults = true)
     {
+        if (useDefaults) LoadProjectProfiles(Selected);
         newReview = true;
         NotifyReviewNavigation();
     }
@@ -454,15 +514,21 @@ public sealed class DeskViewModel : ObservableObject
         await RefreshAsync();
         var targetScope = LatestReview.Scope == ReviewScope.BranchVsBase && Snapshot?.BaseRef == null ? ReviewScope.WorkingChanges : LatestReview.Scope;
         await LoadChangedPathsAsync(targetScope);
-        var setup = ReusedReviewSetup.From(LatestReview, ReviewPaths.Select(p => p.Path).ToArray(), Snapshot?.BaseRef != null);
+        var setup = ReusedReviewSetup.From(LatestReview, ReviewPaths.Select(p => p.Path).ToArray(), Snapshot?.BaseRef != null, models);
+        ApplyExecution(setup.Execution!);
+        ExecutionNotice = "";
         Scope = setup.Scope;
         foreach (var choice in ProfileChoices) choice.IsSelected = setup.ProfileIds.Contains(choice.Profile.Id);
         ReviewProgress = setup.Message;
-        ShowNewReviewForm();
+        ShowNewReviewForm(useDefaults: false);
         return setup;
     }
 
-    public async Task RefreshAccountAsync() => SetAccount(await copilot.GetAccountAsync());
+    public async Task RefreshAccountAsync()
+    {
+        SetAccount(await copilot.GetAccountAsync());
+        SetMetadata(await copilot.GetMetadataAsync());
+    }
     public async Task SignInAsync()
     {
         try
@@ -528,3 +594,4 @@ public sealed record ReviewHistoryItem(ReviewRecord Record)
 }
 
 public sealed record ScopeChoice(ReviewScope Scope, string Name);
+public sealed record EffortChoice(string Id, string Name);

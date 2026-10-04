@@ -136,7 +136,7 @@ public sealed class CopilotStreamValidator
     private static JsonElement Property(JsonElement element, string key) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(key, out var value) ? value : default;
     private static string? Text(JsonElement element, string key) => Property(element, key) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
 
-    private static void RequireUniqueProperties(JsonElement value)
+    internal static void RequireUniqueProperties(JsonElement value)
     {
         if (value.ValueKind == JsonValueKind.Object)
         {

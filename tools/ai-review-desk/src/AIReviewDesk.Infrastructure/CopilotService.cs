@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Diagnostics;
+using System.Text.Json;
 using AIReviewDesk.Core;
 
 namespace AIReviewDesk.Infrastructure;
@@ -46,6 +48,56 @@ public sealed class CopilotService
         return File.Exists(config) && CopilotConfigScanner.InspectFile(config).SavedAccountPresent;
     }
 
+    public async Task<CopilotMetadata> GetMetadataAsync(CancellationToken cancellationToken = default)
+    {
+        var account = await GetAccountAsync(cancellationToken);
+        if (!account.Supported || account.ConfigurationBlocked) return CopilotMetadata.Unavailable;
+        var run = CreateRunDirectory();
+        Process? process = null; Task? stderr = null;
+        try
+        {
+            var installation = CopilotContract.Detect()!;
+            var configuration = CopilotPreflight.Inspect(Profile, run);
+            CopilotGitHubCliIsolation.Inspect(installation, run);
+            var info = CopilotContract.StartInfo(installation, run, Profile, Path.Combine(run, "cache"), CopilotContract.MetadataArguments(Path.Combine(run, "logs")));
+            if (CopilotPreflight.Inspect(Profile, run) != configuration) throw new InvalidOperationException("Configuration changed.");
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            process = Process.Start(info) ?? throw new InvalidOperationException("Metadata runtime unavailable.");
+            // Never retain, log or display runtime diagnostics (including authentication failures).
+            stderr = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
+            var rpc = new CopilotMetadataRpc(process);
+            using var connected = await rpc.RequestAsync("connect", timeout.Token);
+            if (connected.RootElement.GetProperty("result").GetProperty("protocolVersion").GetInt32() != 3)
+                throw new InvalidOperationException("Unsupported SDK protocol.");
+            using var status = await rpc.RequestAsync("status.get", timeout.Token);
+            CopilotMetadataParser.ValidateRuntime(status.RootElement.GetProperty("result"));
+            using var models = await rpc.RequestAsync("models.list", timeout.Token);
+            var choices = CopilotMetadataParser.Models(models.RootElement.GetProperty("result"));
+            CopilotQuota? quota = null;
+            try
+            {
+                using var response = await rpc.RequestAsync("account.getQuota", timeout.Token);
+                quota = CopilotMetadataParser.Quota(response.RootElement.GetProperty("result"), DateTimeOffset.UtcNow);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException or KeyNotFoundException or IOException or OperationCanceledException) { }
+            return new(choices, quota, CopilotMetadata.Unavailable.Message);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JsonException or KeyNotFoundException or IOException or OperationCanceledException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        { return CopilotMetadata.Unavailable; }
+        finally
+        {
+            if (process != null)
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                await process.WaitForExitAsync();
+                if (stderr != null) await stderr;
+                process.Dispose();
+            }
+            DeleteRunDirectory(run);
+        }
+    }
+
     public async Task SignInAsync(CancellationToken cancellationToken = default)
     {
         var installation = CopilotContract.Detect() ?? throw new InvalidOperationException("Copilot CLI is missing.");
@@ -70,7 +122,7 @@ public sealed class CopilotService
     public Task SignOutAsync(CancellationToken cancellationToken = default) =>
         Task.FromException(new InvalidOperationException("CLI 1.0.91 has no supported noninteractive sign-out command. AI Review Desk does not automate interactive account commands. No credentials were changed."));
 
-    public async Task<ReviewRecord> RunAsync(ReviewInput input, IEnumerable<string> profileIds, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<ReviewRecord> RunAsync(ReviewInput input, IEnumerable<string> profileIds, IProgress<string>? progress = null, CancellationToken cancellationToken = default, ReviewExecutionSettings? execution = null)
     {
         if (!input.HasReviewableChanges) throw new ReviewValidationException("The selected scope has no changes to review. Preview remains available.");
         var ids = profileIds.ToArray();
@@ -78,7 +130,7 @@ public sealed class CopilotService
         var profiles = BuiltInProfiles.All.Where(p => ids.Contains(p.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var record = new ReviewRecord
         {
-            SchemaVersion = 3,
+            SchemaVersion = 4, RequestedExecution = execution ?? new(),
             ProjectId = input.Project.Id, ProjectName = input.Project.DisplayName, RepositoryPath = input.Project.RepositoryPath,
             Branch = input.Snapshot.Branch, HeadSha = input.Snapshot.HeadSha, BaseRef = input.Snapshot.BaseRef, MergeBaseSha = input.Snapshot.MergeBaseSha,
             Scope = input.Scope, SelectedPaths = input.SelectedPaths, ProfileIds = profiles.Select(p => p.Id).ToArray(),
@@ -99,9 +151,17 @@ public sealed class CopilotService
             var account = await GetAccountAsync(cancellationToken);
             record = record with { CopilotCliVersion = account.Version ?? "" };
             if (!account.Available || !account.Supported) return record with { Status = ReviewStatus.Unsupported, Diagnostic = account.Message };
+            CopilotModelPolicy.Validate(record.RequestedExecution!, account.Version);
+            if (!record.RequestedExecution!.IsAutoModel)
+            {
+                var metadata = await GetMetadataAsync(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                CopilotModelPolicy.Validate(record.RequestedExecution, account.Version, metadata.Models);
+            }
             run = CreateRunDirectory();
             var configuration = CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath);
-            var info = CopilotContract.StartInfo(CopilotContract.Detect()!, run, Profile, Path.Combine(run, "cache"), CopilotContract.ReviewArguments(input.Project.RepositoryPath, Path.Combine(run, "logs")));
+            var usageFile = Path.Combine(run, "usage.json");
+            var info = CopilotContract.StartInfo(CopilotContract.Detect()!, run, Profile, Path.Combine(run, "cache"), CopilotContract.ReviewArguments(input.Project.RepositoryPath, Path.Combine(run, "logs"), record.RequestedExecution, usageFile));
             progress?.Report("Starting Copilot");
             // Recheck immediately before Process.Start. Same-user external writes remain a documented desktop trust assumption.
             if (CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath) != configuration) throw new InvalidOperationException("Copilot configuration changed during launch preparation.");
@@ -117,8 +177,15 @@ public sealed class CopilotService
             record = record with { FingerprintAfter = after, CopilotModel = validator.Model };
             if (after != input.Fingerprint) return record with { Status = ReviewStatus.Stale, Diagnostic = "Repository contents or Git state changed during review. Findings were discarded." };
             var result = validator.Complete(process.ExitCode, process.Cancelled);
+            ReviewUsage? usage = null;
+            try
+            {
+                if (File.Exists(usageFile) && new FileInfo(usageFile).Length <= 128 * 1024 && (File.GetAttributes(usageFile) & FileAttributes.ReparsePoint) == 0)
+                    usage = CopilotUsageParser.Parse(await File.ReadAllTextAsync(usageFile, cancellationToken));
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or IOException or UnauthorizedAccessException) { }
             progress?.Report("Completed");
-            return record with { Status = ReviewStatus.Completed, Result = result };
+            return record with { Status = ReviewStatus.Completed, Result = result, Usage = usage };
         }
         catch (OperationCanceledException)
         {
