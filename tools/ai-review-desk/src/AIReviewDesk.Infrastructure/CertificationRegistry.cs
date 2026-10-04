@@ -23,7 +23,7 @@ public sealed class CertificationRegistry(string? dataDirectory = null)
             var state = document.Deserialize<State>(CertificationContract.JsonOptions)!;
             if (state.SchemaVersion != 1 || state.Models == null || state.Models.Length > 100 ||
                 state.Models.Any(c => c == null || c.SchemaVersion is not (1 or 2) || string.IsNullOrWhiteSpace(c.ModelId) || c.ModelId.Length > 128 || (c.Source != "locally certified" && !(c.Source == "bundled certification" && c.Status == CertificationStatus.NeedsRetest)) ||
-                    c.OutputEnvelopeId == null || c.EnvelopeObservations == null || c.EnvelopeObservations.Length > 4 || c.EnvelopeObservations.Any(o => o == null || o.Case is not ("zero findings" or "deliberate defect" or "repeat zero findings")) ||
+                    c.OutputEnvelopeId == null || c.EnvelopeObservations == null || c.EnvelopeObservations.Length > 4 || c.EnvelopeObservations.Any(o => o == null || o.Case is not ("zero findings" or "deliberate defect" or "repeat zero findings") || o.Structure is { IsValid: false }) ||
                     !Enum.IsDefined(c.Status) || c.ReasoningEfforts == null || c.ExpectedTools == null || c.TechnicalTools == null || c.Probes == null || c.Probes.Any(p => p == null || string.IsNullOrWhiteSpace(p.Name)) ||
                     c.ExpectedTools.Any(t => t == null) || c.TechnicalTools.Any(t => t == null) || c.ReasoningEfforts.Any(e => string.IsNullOrWhiteSpace(e))) ||
                 state.Models.Select(c => c.ModelId).Distinct().Count() != state.Models.Length) throw new InvalidOperationException();

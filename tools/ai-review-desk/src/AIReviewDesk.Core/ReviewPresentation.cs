@@ -46,6 +46,7 @@ public sealed record ReviewDetails(ReviewRecord Record)
     public string ResultSummary => CanHandoff ? Record.Result.Summary : "";
     public string Limitations => CanHandoff ? string.Join("\n", Record.Result.Limitations) : "";
     public bool HasLimitations => Limitations.Length > 0;
+    public string OutputStructureText => Record.OutputStructure == null ? "" : $"Output structure: {Record.OutputStructure}";
     public string Diagnostic => Record.Diagnostic ?? "";
     public bool HasDiagnostic => Diagnostic.Length > 0;
     public static string ScopeName(ReviewScope scope) => scope switch

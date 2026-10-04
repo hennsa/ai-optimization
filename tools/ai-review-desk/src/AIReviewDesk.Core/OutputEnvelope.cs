@@ -35,4 +35,17 @@ public static class OutputEnvelope
 }
 
 /// <summary>Compact stages observed for one completed certification call; never contains returned text.</summary>
-public sealed record OutputEnvelopeObservation(string Case, string? EnvelopeId, int EnvelopeVersion, bool EnvelopePassed, bool JsonParsed, bool SchemaPassed);
+public sealed record OutputEnvelopeObservation(string Case, string? EnvelopeId, int EnvelopeVersion, bool EnvelopePassed, bool JsonParsed, bool SchemaPassed, ResponseStructure? Structure = null);
+
+public enum ResponseShape { RawJson, SingleJsonFence, MalformedJson, SurroundingText, MultipleFenceBlocks, UnsupportedFence, IncompleteFence, OtherPresentation }
+public enum ResponseBoundary { Empty, JsonDelimiter, Fence, OtherText }
+
+/// <summary>Fixed structural facts only. No text, property names, snippets, or repository data.</summary>
+public sealed record ResponseStructure(ResponseShape Shape, int Characters, int Utf8Bytes, int FenceLikeLines,
+    ResponseBoundary Leading, ResponseBoundary Trailing, bool JsonParsed, bool SchemaPassed)
+{
+    [System.Text.Json.Serialization.JsonIgnore] public bool IsValid => Enum.IsDefined(Shape) && Enum.IsDefined(Leading) && Enum.IsDefined(Trailing) &&
+        Characters is >= 0 and <= 16 * 1024 * 1024 && Utf8Bytes is >= 0 and <= 64 * 1024 * 1024 &&
+        FenceLikeLines >= 0 && FenceLikeLines <= Characters && (!SchemaPassed || JsonParsed);
+    public override string ToString() => $"{Shape} · {Characters} characters / {Utf8Bytes} UTF-8 bytes · fence-like lines {FenceLikeLines} · boundaries {Leading}/{Trailing} · JSON {JsonParsed} · schema {SchemaPassed}";
+}

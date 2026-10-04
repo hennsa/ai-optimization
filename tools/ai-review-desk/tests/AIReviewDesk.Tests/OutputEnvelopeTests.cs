@@ -210,6 +210,26 @@ public sealed class OutputEnvelopeTests : IDisposable
         Assert.True(vm.Execution.IsAutoModel); Assert.NotEmpty(vm.ExecutionNotice);
         Assert.Equal(project.DefaultExecution, (await new RegistryStore(root).LoadAsync()).State.Projects.Single().DefaultExecution);
     }
+    [Fact] public async Task Recertified_Sonnet_restores_stored_default_without_rebuild_or_silent_default_change()
+    {
+        var sonnet = new CopilotModelChoice("claude-sonnet-5.5", "Claude Sonnet 5.5", ["high", "max"]);
+        var c = Certificate with { ModelId = sonnet.Id, DisplayName = sonnet.Name, ReasoningEfforts = ["high"],
+            OutputEnvelopeId = OutputEnvelope.RawJson,
+            EnvelopeObservations = Certificate.EnvelopeObservations.Take(2).Select(o => o with { EnvelopeId = OutputEnvelope.RawJson }).ToArray() };
+        await Registry.SuspendAsync(c);
+        await using var fixture = await CertificationFixture.CreateAsync(root);
+        var project = fixture.Project with { DefaultExecution = new(sonnet.Id, "high") };
+        var vm = new DeskViewModel(root); vm.SetMetadata(new([sonnet], null, "")); vm.RebuildProfileChoices(["standard"]);
+        await vm.SaveProjectAsync(project, true); vm.ShowNewReviewForm();
+        Assert.True(vm.Execution.IsAutoModel); Assert.NotEmpty(vm.ExecutionNotice);
+        await Registry.SaveAsync(c with { Status = CertificationStatus.Rejected }); vm.SetMetadata(new([sonnet], null, ""));
+        Assert.DoesNotContain(vm.Models, m => m.Id == sonnet.Id);
+        await Registry.SaveAsync(c); vm.SetMetadata(new([sonnet], null, "")); vm.ShowNewReviewForm();
+        Assert.Equal(project.DefaultExecution, vm.Execution); Assert.Contains(sonnet.Name, vm.ExecutionDisplay);
+        Assert.Equal(new[] { "high" }, vm.Models.Single(m => m.Id == sonnet.Id).Efforts);
+        Assert.Equal(project.DefaultExecution, (await new RegistryStore(root).LoadAsync()).State.Projects.Single().DefaultExecution);
+        Assert.False(Directory.Exists(Path.Combine(root, "Reviews")));
+    }
     [Fact] public void Deterministic_boundary_mutations_never_find_a_JSON_fragment()
     {
         foreach (var prefix in new[] { "a", "`", "<html>", "{}", "//", "\u0000" })

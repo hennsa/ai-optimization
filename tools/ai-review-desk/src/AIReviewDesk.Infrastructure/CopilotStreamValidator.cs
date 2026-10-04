@@ -16,7 +16,8 @@ public sealed class CopilotStreamValidator
     public bool EnvelopePassed { get; private set; }
     public bool JsonParsed { get; private set; }
     public bool SchemaPassed { get; private set; }
-    public OutputEnvelopeObservation OutputObservation(string probe) => new(probe, ObservedEnvelope, OutputEnvelope.Version, EnvelopePassed, JsonParsed, SchemaPassed);
+    public ResponseStructure? Structure { get; private set; }
+    public OutputEnvelopeObservation OutputObservation(string probe) => new(probe, ObservedEnvelope, OutputEnvelope.Version, EnvelopePassed, JsonParsed, SchemaPassed, Structure);
     public string[]? ObservedTools { get; private set; }
     public bool ContractDrift { get; private set; }
     public string? Invalid => invalid;
@@ -139,6 +140,7 @@ public sealed class CopilotStreamValidator
 
     private ReviewResult ParseFinalText(string text)
     {
+        Structure = ResponseStructureScanner.Inspect(text);
         var selected = envelopeId;
         if (discoverEnvelope)
         {

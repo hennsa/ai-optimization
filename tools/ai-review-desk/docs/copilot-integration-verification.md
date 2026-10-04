@@ -560,3 +560,62 @@ An initial UI probe inadvertently queued the production App startup bootstrap an
 Dedicated profile/scanner/credential and GitHub CLI isolation, ephemeral cwd/`--add-dir`/`--disallow-temp-dir`, exact model tool manifests, disabled MCP/instructions/remotes, output-envelope certification, unchanged strict findings schema, usage capture, process-tree cancellation, all full execution fingerprints/stale rejection and certification lifecycle remain enforced.
 
 **Delegation Report:** two bounded tasks used explicit routed settings **GPT-6 Luna / High** (`fork_turns=none`): live schema/billing implementation and startup instrumentation/theme/hydration. The primary integrated the results and reviewed transport/authority, UI, race guards and persistence with the full suite and synthetic WPF checks. Child settings are routing selections, not independently attested runtime metadata. No new governance layer was added.
+
+## Corrective Preview and output diagnostics — 2026-10-04
+
+Implementation starts from clean local/remote `main` at `37d01fa6e8e6f0c6de5791cf8696828702161c2c`. This is an implementation investigation and synthetic verification, **not final real VIV acceptance**. No customer repository was accessed or modified during this slice.
+
+### Sonnet investigation and decision
+
+The independent broad VIV Sonnet 5.5 / High run failed the certified raw-JSON contract and correctly suspended the certificate. Its assistant response was discarded before this investigation. Its exact original presentation shape therefore remains **unknown**: neither malformed JSON nor surrounding prose nor a wrapper change can be asserted retroactively. There is no evidence to justify changing the parser or adding an envelope.
+
+The new diagnostic scanner records only fixed shape/boundary enums, character/UTF-8 byte counts, fence-like line count, JSON parse and schema booleans. It accepts no findings/prompt/repository/raw-response strings in its returned record. It classifies whole raw JSON, the exact existing single-json-fence form, malformed object/array JSON, anchored JSON followed by non-whitespace, surrounding fenced text, multiple/incomplete/unsupported fences, and other presentation. Leading prose before raw JSON is reported as other presentation with structural boundaries; the scanner deliberately does not search it for JSON fragments. Intrinsic diagnostic parse/schema success is separate from certified runtime acceptance. For example, a valid fence under a raw certificate remains rejected even though its diagnostic payload schema passes.
+
+Facts are available in compatibility evidence and the collapsed review snapshot detail, including failed result validation. Certification/history loading validates the fixed diagnostic fields. No raw assistant response, snippets, property names, findings text or prompts are added to diagnostic persistence. The scanner's start-anchored parse observation is diagnostic only and never supplies a candidate payload to runtime parsing.
+
+Two completed, controlled production compatibility calls used the app-owned disposable certification fixture, Sonnet 5.5 / **High**, CLI **1.0.91**:
+
+| Case | Structural classification | Characters / UTF-8 bytes | Fence-like lines | Boundaries | JSON / schema |
+| --- | --- | ---: | ---: | --- | --- |
+| Zero findings | Complete raw JSON | 502 / 502 | 0 | JSON delimiter / JSON delimiter | Pass / Pass |
+| Deliberate defect | Complete raw JSON | 1,122 / 1,122 | 0 | JSON delimiter / JSON delimiter | Pass / Pass |
+
+All existing compatibility probes passed, including integrity, authority, usage and early cancellation. The cancellation probe terminated before a completed model turn; no additional completed-call usage was emitted. The existing mechanism persisted **Certified**, `raw-json-v1`, reasoning **High only**, exact `view,grep,glob`. Live discovery immediately materialized `claude-sonnet-5.5` with friendly name **Claude Sonnet 5.5**, without rebuild. Stored project/default choices were not rewritten. Controlled compatibility is not proof that a future broad review cannot drift; future drift still suspends certification.
+
+Actual emitted usage: **2.67958 AI credits** (`2,679,580,000` nano units), premium-request cost **2**. Per-call input/output/cache-read/cache-write/reasoning tokens were **6,173 / 166 / 1,348 / 4,821 / 0** and **6,198 / 387 / 2,851 / 3,343 / 0**. Calls stopped after sufficient evidence. No customer repository or retained raw output was used. Owned sessions/fixture directories were cleaned; the official profile/authentication state was preserved, with only expected application certification/CLI bookkeeping.
+
+**Output envelope contracts and parsers did not change.** Raw JSON and the already certified exact lowercase single-json-fence remain the only supported envelopes. There is no generic stripping, fragment selection, JSON/schema repair, coercion, runtime fallback, model-ID special case or LLM repair.
+
+### Preview dispatcher root cause and correction
+
+Previously `PreparePromptAsync` awaited `GitReviewContext` from WPF, so infrastructure continuations captured the dispatcher. The two advisory stamp passes synchronously resolved/validated paths and inspected changed-file stat metadata there; context assembly/file-read continuations and final composition also resumed there. Async Git/file APIs did not move that continuation work off the dispatcher.
+
+`PromptPreviewService` now provides one background boundary for the entire advisory Git/context preparation and the exact production `PromptComposer`. The UI captures project config, scope, copied paths/profiles and display/execution settings before awaiting. The service defensively copies list inputs before scheduling, receives no WPF collections, and runs preparation/composition without a UI synchronization context. `Progress` and awaited completion apply state on the originating dispatcher. Project/input generation, scope/model/profile checks discard superseded results; success/failure/cancellation invalidate late progress. The preview window opens only after preparation. Cancellation propagates through the service/ViewModel, but this slice does not add a new Preview Cancel control.
+
+Preview still performs **no full content fingerprint**, retains secret/path/conflict/scope checks and lightweight before/after consistency evidence, and explicitly remains advisory. Start Review ignores Preview authority and performs independent fresh preparation. Before/after preparation, pre-launch and post-run full fingerprints and stale-result rejection are unchanged.
+
+Development stage timings are opt-in Trace output (`AI_REVIEW_DESK_PREVIEW_DIAGNOSTICS=1`), with stage/time/thread/context only and no production file log or payload. A disposable synthetic Git fixture with **3,000 untracked files** and a **1,510,691-character prompt** exercised paired former-path/service preparations plus the actual production MainWindow Preview handler. MainWindow used isolated app state and suppressed account hydration; no model calls or customer data were involved. No build/test workload overlapped the samples.
+
+| Measurement | Former dispatcher path | Background service |
+| --- | ---: | ---: |
+| First pair total preparation | 16.535 s | 12.377 s |
+| Second pair total preparation | 14.051 s | 13.415 s |
+| Instrumented pair total | 15.668 s | 14.515 s |
+| Instrumented pair dispatcher CPU | 10,016 ms | 250 ms |
+| Instrumented pair maximum timer gap | 3,634 ms | 1,985 ms |
+
+The first two baseline maximum timer gaps were **2,993 / 2,962 ms**, comparable to the independent reported **2.4–2.7 s** stall. In the instrumented baseline, consistency-check gaps consumed **3,469 / 2,844 ms of dispatcher CPU**. All service stage callbacks reported **no dispatcher synchronization context**. Its longest 1,985-ms gap consumed **125 ms of dispatcher CPU**; a separate idle control itself recorded **1,357 ms** with only **16 ms CPU**, so wall-clock gaps are heavily contaminated by host scheduling. These figures support removal of repository preparation from the dispatcher, **not a guarantee of sub-100-ms responsiveness or a total-speed benchmark**. Residual native wall-clock responsiveness remains for independent acceptance.
+
+The actual production click handler completed in **13.813 s**, with **347 timer callbacks / 136 render callbacks**, **672 ms total UI CPU** including result/window application, and a **1,621-ms maximum timer gap**. The prompt opened, matched the exact production composition, retained `IsPreview=true` and an empty fingerprint. All paired prompts matched. Tests use deterministic worker gates and a UI synchronization-context pump to prove continued dispatch while work is pending and correct-thread result/progress application; correctness does not depend on timing assertions.
+
+### Minor UX fixes and validation
+
+Repository hydration now displays inspection-in-progress language rather than the static error/retry instruction. Real inspection failures retain the error and retry wording. Account/model metadata has an explicit loading state; unavailable metadata remains distinct and retryable. Execution display resolves a locally certified model's name from its validated live model choice, including Luna; its ID remains the canonical certification/security identity. Certificate names are not rewritten for cosmetic drift, and no-longer-advertised rows retain certificate display information without authorizing execution.
+
+Full automated Release suite: **409 passed, 0 failed, 0 skipped** (26 added cases), 64 seconds. Coverage includes diagnostic non-retention/classification, uncertified-fence rejection despite diagnostic schema success, existing strict envelope/no-repair/drift controls, generic recertification/default restoration, background input capture and exact composition, dispatcher application, superseded project results, cancellation/errors/late progress, fresh execution preparation after Preview, loading/failure copy and live Luna name/ID semantics. Existing full-fingerprint/stale, scanner/isolation/manifests, process-tree cancellation, transport/modal/history/regression tests remain passing.
+
+Optional frame-byte/event/stdout counters are deferred; this slice adds output-shape facts only. The 12 MiB/frame and 16 MiB total bounds are unchanged. Final real VIV acceptance is intentionally deferred.
+
+Release solution build succeeded with **0 errors**, with the existing **NU1900** vulnerability-feed availability warning. Final source/security diff inspection, `git diff --check`, task-scope/generated-artifact and credential-pattern checks passed. The disposable repositories and app-owned run sessions were cleaned. Automatic approval review rejected removal of the two Temp probe helper directories with “blocked by policy”; helper source/build files and empty fixture parent directories remain outside the repository. No authentication/profile configuration or customer repository was changed.
+
+**Delegation: none.**

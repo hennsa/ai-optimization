@@ -127,6 +127,7 @@ public sealed record ReviewResult
 /// <summary>Compact run metadata and parsed results. Full repository diffs are intentionally excluded.</summary>
 public sealed record ReviewRecord
 {
+    public ResponseStructure? OutputStructure { get; init; }
     public int SchemaVersion { get; init; } = 1;
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid ProjectId { get; init; }

@@ -50,6 +50,19 @@ public sealed class CertificationTests : IDisposable
         Assert.False(File.Exists(Path.Combine(root, "app-state.json"))); Assert.False(Directory.Exists(Path.Combine(root, "Reviews")));
         Assert.Empty(Directory.GetFiles(root, "*.tmp"));
     }
+    [Fact] public async Task Live_Luna_name_is_preferred_without_rewriting_certificate_or_trust_identity()
+    {
+        await Registry.SaveAsync(Certificate with { DisplayName = luna.Id });
+        var live = luna with { Name = "GPT-6 Luna live name" };
+        var vm = new DeskViewModel(root); vm.SetMetadata(new([live], null, "")); vm.SelectedModelId = luna.Id;
+        Assert.Contains(live.Name, vm.ExecutionDisplay); Assert.Equal(luna.Id, vm.Execution.ModelId);
+        Assert.Equal(new[] { "high" }, vm.Models.Single(m => m.Id == luna.Id).Efforts);
+        Assert.Equal(luna.Id, Registry.ReadLocal().Single().DisplayName);
+        Assert.Equal(luna.Id, Registry.Resolve(vm.Execution, [live], "1.0.91").ModelId);
+        var absent = Registry.Discover([], "1.0.91").Single(r => r.Model.Id == luna.Id);
+        Assert.Equal(CertificationStatus.NoLongerAdvertised, absent.Status); Assert.Equal(luna.Id, absent.Model.Name);
+        Assert.Single(Registry.Selectable([], "1.0.91"));
+    }
     [Theory] [InlineData("broken")] [InlineData("{\"SchemaVersion\":2,\"Models\":[]}")] [InlineData("{\"SchemaVersion\":1,\"Models\":[{}]}")]
     public void Malformed_future_and_incomplete_records_never_authorize_a_model(string json)
     {

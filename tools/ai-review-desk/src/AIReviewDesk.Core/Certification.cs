@@ -45,7 +45,7 @@ public sealed record ModelCompatibility(CopilotModelChoice Model, CertificationS
     public string Evidence => Certificate == null ? "No certification evidence yet." : (Certificate.EvidenceNote == null ? "" : Certificate.EvidenceNote + "\n") +
         $"Envelope contract: {Certificate.OutputEnvelopeId} · version {Certificate.OutputEnvelopeVersion}\nSchema contract: {Certificate.OutputContract}\nSuccessful envelope observations: {Certificate.SuccessfulEnvelopeObservations}" +
         (Certificate.SchemaVersion == 1 ? (Certificate.Status == CertificationStatus.Certified ? " (legacy strict raw JSON evidence)" : " (legacy attempted raw JSON contract)") : "") + "\n" +
-        string.Join("\n", Certificate.EnvelopeObservations.Select(o => $"{o.Case}: {OutputEnvelope.Label(o.EnvelopeId)} · envelope {(o.EnvelopePassed ? "passed" : "failed")} · JSON {(o.JsonParsed ? "passed" : "failed")} · schema {(o.SchemaPassed ? "passed" : "failed")}")) + "\n" +
+        string.Join("\n", Certificate.EnvelopeObservations.Select(o => $"{o.Case}: {OutputEnvelope.Label(o.EnvelopeId)} · envelope {(o.EnvelopePassed ? "passed" : "failed")} · JSON {(o.JsonParsed ? "passed" : "failed")} · schema {(o.SchemaPassed ? "passed" : "failed")}" + (o.Structure == null ? "" : $"\nStructure: {o.Structure}"))) + "\n" +
         string.Join("\n", Certificate.Probes.Select(p => $"{p.Name}: {(p.Passed ? "passed" : "failed")}")) + (Certificate.Usage == null ? "" : "\n" + Certificate.Usage.Display);
 }
 

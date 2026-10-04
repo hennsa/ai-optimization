@@ -67,6 +67,7 @@ public sealed class ReviewHistoryStore
         return record with
         {
             Result = result,
+            OutputStructure = record.OutputStructure is { IsValid: true } ? record.OutputStructure : null,
             RequestedExecution = record.SchemaVersion >= 4 ? record.RequestedExecution : null,
             Usage = record.SchemaVersion >= 4 && record.Status == ReviewStatus.Completed ? NormalizeUsage(record.Usage) : null,
             TrackedChangedCount = record.SchemaVersion >= 3 ? record.TrackedChangedCount : null,

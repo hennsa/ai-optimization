@@ -55,6 +55,11 @@ public sealed class StartupHydrationTests
         Assert.True(vm.HistoryLoading);
         Assert.Equal("Checking local repository state…", vm.RepositoryStatus);
         Assert.Equal("Loading review history…", vm.HistoryStatus);
+        Assert.Contains("Inspecting", vm.RepositoryDetail);
+        Assert.DoesNotContain("try again", vm.RepositoryDetail);
+        Assert.DoesNotContain("retry", vm.ModelMetadataStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Loading", vm.ModelMetadataStatus);
+        Assert.Contains("Loading", vm.CopilotUsage);
 
         var selection = vm.SelectAsync(second);
         await Task.WhenAll(secondGitStarted.Task, secondHistoryStarted.Task);
@@ -79,6 +84,22 @@ public sealed class StartupHydrationTests
         Assert.False(vm.HistoryLoading);
         await selection;
         account.SetResult(true);
+    }
+
+    [Fact]
+    public async Task Failed_repository_and_unavailable_metadata_keep_truthful_retry_explanations()
+    {
+        using var directory = new TemporaryDirectory();
+        var project = new ProjectRegistration { RepositoryPath = directory.Path };
+        var failed = NewSource<RepositorySnapshot>();
+        var vm = new DeskViewModel(directory.Path, projectInspector: _ => failed.Task,
+            historyLoader: _ => Task.FromResult<IReadOnlyList<ReviewRecord>>([]), accountRefresher: () => Task.CompletedTask);
+        await vm.InitializeAsync(new RegistryLoadResult(new AppState { Projects = [project], SelectedProjectId = project.Id }, null));
+        failed.SetException(new IOException("synthetic inspection failure"));
+        await WaitForHydrationAsync(vm);
+        Assert.Contains("could not be loaded", vm.RepositoryStatus); Assert.Contains("try again", vm.RepositoryDetail); Assert.NotEmpty(vm.Error);
+        vm.SetMetadata(CopilotMetadata.Unavailable);
+        Assert.Contains("unavailable", vm.ModelMetadataStatus); Assert.Contains("try again", vm.ModelMetadataStatus);
     }
 
     [Fact]

@@ -137,11 +137,12 @@ public partial class MainWindow : FluentWindow
     private async void OnPreviewPrompt(object sender, RoutedEventArgs e)
     {
         string? prompt = null;
+        var executionDisplay = ViewModel.ExecutionDisplay;
         await ViewModel.ExecuteAsync(async () =>
         {
             prompt = await ViewModel.PreparePromptAsync(CurrentScope(), SelectedPaths());
         });
-        if (!string.IsNullOrWhiteSpace(prompt)) new PromptPreviewWindow(prompt, ViewModel.ExecutionDisplay) { Owner = this }.ShowDialog();
+        if (!string.IsNullOrWhiteSpace(prompt)) new PromptPreviewWindow(prompt, executionDisplay) { Owner = this }.ShowDialog();
     }
 
     private void OnStartReview(object sender, RoutedEventArgs e)

@@ -188,7 +188,7 @@ public sealed partial class CopilotService
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or IOException or UnauthorizedAccessException) { }
             progress?.Report("Completed");
-            return record with { Status = ReviewStatus.Completed, Result = result, Usage = usage };
+            return record with { Status = ReviewStatus.Completed, Result = result, Usage = usage, OutputStructure = validator.Structure };
         }
         catch (OperationCanceledException)
         {
@@ -196,7 +196,7 @@ public sealed partial class CopilotService
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or System.Text.Json.JsonException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
         {
-            return record with { Status = ReviewStatus.Failed, Diagnostic = ex is System.ComponentModel.Win32Exception ? "Copilot could not be started." : ex.Message };
+            return record with { Status = ReviewStatus.Failed, Diagnostic = ex is System.ComponentModel.Win32Exception ? "Copilot could not be started." : ex.Message, OutputStructure = validator?.Structure };
         }
         finally
         {

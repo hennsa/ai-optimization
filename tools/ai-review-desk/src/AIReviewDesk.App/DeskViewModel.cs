@@ -23,6 +23,8 @@ public sealed class DeskViewModel : ObservableObject
     private string area = "Projects", notice = "", error = "", refreshed = "";
     private bool busy, ready;
     private bool repositoryLoading, historyLoading;
+    private bool metadataLoading = true;
+    private bool repositoryFailed;
     private int refreshGeneration;
     private int historyGeneration;
     private int selectionIntentGeneration;
@@ -32,6 +34,7 @@ public sealed class DeskViewModel : ObservableObject
     private ReviewScope scope = ReviewScope.WorkingChanges;
     private ReviewProfile? selectedProfile;
     private ReviewInput? preparedInput;
+    private int previewGeneration;
     private ReviewRecord? latestReview;
     private CancellationTokenSource? reviewCancellation;
     private string reviewProgress = "", accountStatus = "Checking Copilot…", accountDetail = "";
@@ -66,6 +69,7 @@ public sealed class DeskViewModel : ObservableObject
 
     internal Func<ReviewInput, IEnumerable<string>, IProgress<string>?, CancellationToken, ReviewExecutionSettings?, Task<ReviewRecord>> ReviewRunner { get; set; }
     internal Func<string, string, IProgress<string>?, CancellationToken, Task<ModelCertificate>> CertificationRunner { get; set; }
+    internal Func<PromptPreviewRequest, IProgress<string>?, CancellationToken, Task<PreparedPromptPreview>> PreviewPreparer { get; set; } = new PromptPreviewService().PrepareAsync;
 
     public ObservableCollection<ProjectRegistration> Projects { get; } = [];
     public IReadOnlyList<CopilotModelChoice> Models => models;
@@ -93,11 +97,12 @@ public sealed class DeskViewModel : ObservableObject
         }
     }
     public ReviewExecutionSettings Execution => execution;
-    public string ExecutionDisplay => execution.Display;
+    public string ExecutionDisplay => $"Model: {models.FirstOrDefault(m => m.Id == execution.ModelId)?.Name ?? CopilotModelPolicy.DisplayName(execution.ModelId)}\nReasoning: {CopilotModelPolicy.EffortName(execution.ReasoningEffort)}";
     public string AutoExplanation => CopilotModelPolicy.AutoExplanation;
     public string ExecutionNotice { get => executionNotice; private set => SetProperty(ref executionNotice, value); }
     public string ReasoningHint => execution.IsAutoModel ? "Choose an explicit model to override reasoning. Auto leaves both settings to the CLI." : EffortChoices.Count == 1 ? "Only this model’s certified reasoning level is available." : "Only this model's verified reasoning levels are shown. Auto passes no effort override.";
-    public string CopilotUsage => metadata.UsageDisplay;
+    public string CopilotUsage => metadataLoading ? "Loading account allowance and model metadata…" : metadata.UsageDisplay;
+    public string ModelMetadataStatus => metadataLoading ? "Loading live model metadata…" : metadata.ModelsAvailable ? "Live model metadata loaded." : "Live model metadata is unavailable. Refresh status to try again.";
     private void ApplyExecution(ReviewExecutionSettings value)
     {
         execution = value;
@@ -109,6 +114,7 @@ public sealed class DeskViewModel : ObservableObject
     }
     internal void SetMetadata(CopilotMetadata value)
     {
+        SetMetadataLoading(false);
         var requested = execution;
         metadata = value; models.Clear();
         var registry = new CertificationRegistry(DataDirectory);
@@ -116,7 +122,7 @@ public sealed class DeskViewModel : ObservableObject
         CompatibilityModels.Clear();
         foreach (var row in registry.Discover(value.Models, value.CliVersion)) CompatibilityModels.Add(value.ModelsAvailable ? row :
             row with { Status = CertificationStatus.NeedsRetest, Reason = "Live model availability is unavailable. Refresh before testing or selecting an explicit model." });
-        OnPropertyChanged(nameof(Models)); OnPropertyChanged(nameof(CopilotUsage));
+        OnPropertyChanged(nameof(Models)); OnPropertyChanged(nameof(CopilotUsage)); OnPropertyChanged(nameof(ModelMetadataStatus));
         ApplyExecution(CopilotModelPolicy.Adjust(requested, models, out var adjustment));
         ExecutionNotice = adjustment ?? "";
     }
@@ -181,9 +187,11 @@ public sealed class DeskViewModel : ObservableObject
                 refreshGeneration++;
                 historyGeneration++;
                 repositoryLoading = false;
+                repositoryFailed = false;
                 historyLoading = false;
                 OnPropertyChanged(nameof(RepositoryLoading));
                 OnPropertyChanged(nameof(RepositoryStatus));
+                OnPropertyChanged(nameof(RepositoryDetail));
                 OnPropertyChanged(nameof(HistoryLoading));
                 OnPropertyChanged(nameof(HistoryStatus));
                 ResetReviewWorkspace();
@@ -229,7 +237,10 @@ public sealed class DeskViewModel : ObservableObject
     public bool SnapshotUnavailable => Selected != null && Snapshot == null;
     public bool RepositoryLoading => repositoryLoading;
     public bool HistoryLoading => historyLoading;
-    public string RepositoryStatus => repositoryLoading ? "Checking local repository state…" : "Repository state is unavailable.";
+    public string RepositoryStatus => repositoryLoading ? "Checking local repository state…" : repositoryFailed ? "Repository state could not be loaded." : "Repository state is unavailable.";
+    public string RepositoryDetail => repositoryLoading ? "Inspecting this repository locally. No remote fetch is performed." : repositoryFailed
+        ? "Check the message above, then refresh to try again. You can still edit project defaults."
+        : "Refresh to inspect the local repository state. You can still edit project defaults.";
     public string HistoryStatus => historyLoading ? "Loading review history…" : "No reviews yet. Choose New review to prepare an independent review for this project.";
     public bool HasBaseWarning => !string.IsNullOrWhiteSpace(Snapshot?.BaseWarning);
     public string WorkingState => Snapshot == null ? "Unavailable" : Snapshot.ConflictCount > 0 ? "Conflicts need attention" : Snapshot.IsClean ? "Working tree clean" : "Working changes";
@@ -308,8 +319,10 @@ public sealed class DeskViewModel : ObservableObject
         bool MayApply() => Selected?.Id == project.Id && generation == refreshGeneration && (completionAllowed?.Invoke() ?? true);
         var previousRefreshed = Refreshed;
         repositoryLoading = true;
+        repositoryFailed = false;
         OnPropertyChanged(nameof(RepositoryLoading));
         OnPropertyChanged(nameof(RepositoryStatus));
+        OnPropertyChanged(nameof(RepositoryDetail));
         if (clearSnapshotAtStart) Snapshot = null;
         Refreshed = "Checking local repository state…";
         var timer = Stopwatch.StartNew();
@@ -326,6 +339,7 @@ public sealed class DeskViewModel : ObservableObject
             if (MayApply())
             {
                 Error = ex.Message;
+                repositoryFailed = true;
                 Refreshed = "Repository state could not be loaded.";
             }
         }
@@ -337,6 +351,7 @@ public sealed class DeskViewModel : ObservableObject
                 repositoryLoading = false;
                 OnPropertyChanged(nameof(RepositoryLoading));
                 OnPropertyChanged(nameof(RepositoryStatus));
+                OnPropertyChanged(nameof(RepositoryDetail));
             }
         }
     }
@@ -389,6 +404,7 @@ public sealed class DeskViewModel : ObservableObject
             {
                 AccountStatus = "Copilot status unavailable";
                 AccountDetail = "Copilot account metadata could not be loaded. Refresh to try again.";
+                SetMetadataLoading(false);
             }
             StartupDiagnostics.Measure("account and metadata hydration unavailable", timer);
         }
@@ -491,6 +507,7 @@ public sealed class DeskViewModel : ObservableObject
 
     public void InvalidateReviewInput()
     {
+        previewGeneration++;
         preparedInput = null;
         OnPropertyChanged(nameof(ReviewInputReady));
     }
@@ -505,19 +522,40 @@ public sealed class DeskViewModel : ObservableObject
         foreach (var path in paths) ReviewPaths.Add(new ReviewPathChoice(path));
     }
 
-    public async Task<string> PreparePromptAsync(ReviewScope forScope, IReadOnlyList<string> selectedPaths)
+    public async Task<string> PreparePromptAsync(ReviewScope forScope, IReadOnlyList<string> selectedPaths, CancellationToken ct = default)
     {
         if (Selected == null) throw new InvalidOperationException("Choose a project before preparing a review.");
         var profileIds = SelectedProfileIds();
         if (profileIds.Count == 0) throw new ReviewValidationException("Choose at least one review profile.");
         CopilotModelPolicy.Validate(execution, CopilotModelPolicy.Version, models);
         Scope = forScope;
-        preparedInput = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, preview: true, progress: new Progress<string>(message => ReviewProgress = message));
+        var generation = ++previewGeneration;
+        var project = Selected;
+        var paths = selectedPaths.ToArray();
+        var settings = execution;
+        var profiles = profileIds.ToArray();
+        bool IsCurrent() => generation == previewGeneration && Selected == project && Scope == forScope && execution == settings && SelectedProfileIds().SequenceEqual(profiles);
+        preparedInput = null;
         OnPropertyChanged(nameof(ReviewInputReady));
-        ReviewProgress = "Preparing prompt";
-        var prompt = PromptComposer.Compose(preparedInput, profileIds);
+        ReviewProgress = "Preparing repository…";
+        PreparedPromptPreview result;
+        try
+        {
+            result = await PreviewPreparer(new(project, forScope, paths, profiles), new Progress<string>(message => { if (IsCurrent()) ReviewProgress = message; }), ct);
+            ct.ThrowIfCancellationRequested();
+        }
+        catch
+        {
+            if (generation == previewGeneration) previewGeneration++; // Discard queued progress from a failed/cancelled worker.
+            throw;
+        }
+        // A changed project/input (including a switch away and back) invalidates this result.
+        if (!IsCurrent()) return "";
+        previewGeneration++; // Discard any queued progress after the final state is applied.
+        preparedInput = result.Input;
+        OnPropertyChanged(nameof(ReviewInputReady));
         ReviewProgress = preparedInput.HasReviewableChanges ? "Prompt prepared from the current repository snapshot." : "The selected scope has no changes. Preview is available; Start review is blocked.";
-        return prompt;
+        return result.Prompt;
     }
 
     public ReviewInput? PreparedInput => preparedInput;
@@ -726,13 +764,22 @@ public sealed class DeskViewModel : ObservableObject
     public async Task RefreshAccountAsync()
     {
         var generation = Interlocked.Increment(ref accountHydrationGeneration);
-        var account = await copilot.GetAccountAsync();
-        var result = await copilot.GetMetadataAsync();
-        if (generation == Volatile.Read(ref accountHydrationGeneration))
+        SetMetadataLoading(true);
+        try
         {
-            SetAccount(account);
-            SetMetadata(result);
+            var account = await copilot.GetAccountAsync();
+            var result = await copilot.GetMetadataAsync();
+            if (generation == Volatile.Read(ref accountHydrationGeneration))
+            {
+                SetAccount(account);
+                SetMetadata(result);
+            }
         }
+        finally { if (generation == Volatile.Read(ref accountHydrationGeneration)) SetMetadataLoading(false); }
+    }
+    private void SetMetadataLoading(bool value)
+    {
+        if (SetProperty(ref metadataLoading, value)) { OnPropertyChanged(nameof(CopilotUsage)); OnPropertyChanged(nameof(ModelMetadataStatus)); }
     }
     public async Task SignInAsync()
     {

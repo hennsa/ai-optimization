@@ -33,7 +33,9 @@ public sealed class GitReviewContext
     private async Task<ReviewInput> PrepareCoreAsync(ProjectRegistration project, ReviewScope scope, IReadOnlyList<string>? selectedPaths, CancellationToken ct, bool preview, IProgress<string>? progress)
     {
         progress?.Report("Preparing repository");
+        if (preview) progress?.Report("Checking preview consistency");
         var before = preview ? await PreviewStampAsync(project.RepositoryPath, ct) : await ExecutionFingerprintAsync(project.RepositoryPath, ct, progress);
+        progress?.Report("Inspecting repository");
         var snapshot = await new GitInspector().InspectAsync(project.RepositoryPath, project.DefaultBase, ct);
         var root = Path.GetFullPath(snapshot.RootPath);
         EnsureReviewableSnapshot(snapshot);
@@ -63,6 +65,7 @@ public sealed class GitReviewContext
             ? await BuildBranchContextAsync(root, snapshot, effectivePaths, ct)
             : await BuildWorkingContextAsync(root, effectivePaths, ct, scope == ReviewScope.SelectedPaths);
 
+        if (preview) progress?.Report("Rechecking preview consistency");
         var after = preview ? await PreviewStampAsync(root, ct) : await ExecutionFingerprintAsync(root, ct, progress);
         if (!string.Equals(before, after, StringComparison.Ordinal))
             throw new PreparationException(PreparationFailure.RepositoryChanged);
