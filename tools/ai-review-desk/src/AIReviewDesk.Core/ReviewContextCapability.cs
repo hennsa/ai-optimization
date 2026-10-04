@@ -2,15 +2,16 @@ using System.Text;
 
 namespace AIReviewDesk.Core;
 
-public enum ReviewContextClass { Normal, Large }
+public enum ReviewContextClass { Normal, Large, Unsupported }
 
-/// <summary>Versioned product boundary derived from two failed real prompts near 1.516M chars.</summary>
+/// <summary>Versioned product tier derived from two failed real prompts near 1.516M chars.</summary>
 public static class ReviewContextCapability
 {
     public const int LargePromptCharacterBoundary = 1_500_000;
     public const int MaximumPromptCharacterBound = 1_600_000;
-    public const string BoundaryVersion = "large-context-1";
-    public const string LargeSuiteVersion = "large-context-suite-1";
+    public const string BoundaryVersion = "large-context-2";
+    public const string LargeSuiteVersion = "large-context-suite-2";
+    public const string LargeTierLabel = "Large context v2 — up to 1,600,000 composed prompt characters";
 
     public static PromptSizeEvidence Measure(string exactPrompt)
     {
@@ -18,8 +19,12 @@ public static class ReviewContextCapability
         return new(exactPrompt.Length, Encoding.UTF8.GetByteCount(exactPrompt), Classify(exactPrompt.Length), BoundaryVersion);
     }
 
-    public static ReviewContextClass Classify(int characters) => characters >= LargePromptCharacterBoundary
-        ? ReviewContextClass.Large : ReviewContextClass.Normal;
+    public static ReviewContextClass Classify(int characters)
+    {
+        if (characters < 0) throw new ArgumentOutOfRangeException(nameof(characters));
+        if (characters > MaximumPromptCharacterBound) return ReviewContextClass.Unsupported;
+        return characters >= LargePromptCharacterBoundary ? ReviewContextClass.Large : ReviewContextClass.Normal;
+    }
 }
 
 public sealed record PromptSizeEvidence(int CharacterCount, int Utf8ByteCount, ReviewContextClass ContextClass, string BoundaryVersion);

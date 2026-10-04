@@ -106,7 +106,7 @@ public sealed class DeskViewModel : ObservableObject
     public string ReasoningHint => execution.IsAutoModel ? "Choose an explicit model to override reasoning. Auto leaves both settings to the CLI." : EffortChoices.Count == 1 ? "Only this model’s certified reasoning level is available." : "Only this model's verified reasoning levels are shown. Auto passes no effort override.";
     public string CopilotUsage => metadataLoading ? "Loading account allowance and model metadata…" : metadata.UsageDisplay;
     public string ModelMetadataStatus => metadataLoading ? "Loading live model metadata…" : metadata.ModelsAvailable ? "Live model metadata loaded." : "Live model metadata is unavailable. Refresh status to try again.";
-    public string PromptSizeDisplay => preparedPromptSize == null ? "Prepare a prompt to see its size." : $"Prompt size: {preparedPromptSize.CharacterCount:N0} characters · {preparedPromptSize.Utf8ByteCount:N0} UTF-8 bytes · {preparedPromptSize.ContextClass} context (characters are not tokens)." +
+    public string PromptSizeDisplay => preparedPromptSize == null ? "Prepare a prompt to see its size." : $"Composed prompt: {preparedPromptSize.CharacterCount:N0} characters · {preparedPromptSize.Utf8ByteCount:N0} UTF-8 bytes · {preparedPromptSize.ContextClass switch { ReviewContextClass.Normal => "Normal context", ReviewContextClass.Large => "Large context", _ => "Unsupported size — reduce scope" }} (characters are not tokens)." +
         (preparedInput == null ? "" : $" Repository inventory: {preparedInput.Snapshot.TrackedChangedCount:N0} tracked changes; {preparedInput.Snapshot.UntrackedCount:N0} untracked files." +
             (preparedInput.Scope == ReviewScope.WorkingChanges ? " Working Changes includes eligible untracked-file content; Selected Paths narrows the review scope." : ""));
     private void ApplyExecution(ReviewExecutionSettings value)
@@ -611,7 +611,7 @@ public sealed class DeskViewModel : ObservableObject
             if (profileIds.Count == 0) throw new ReviewValidationException("Choose at least one review profile.");
             CopilotModelPolicy.Validate(selectedExecution, CopilotModelPolicy.Version, models);
             // Always prepare afresh for execution; a preview is an audit snapshot, not execution authority.
-            var input = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, cancellationToken, progress: new Progress<string>(Report));
+            var input = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, cancellationToken, progress: new Progress<string>(Report), profileIds: profileIds);
             Snapshot = input.Snapshot;
             preparedInput = input;
             OnPropertyChanged(nameof(ReviewInputReady));
@@ -621,6 +621,8 @@ public sealed class DeskViewModel : ObservableObject
             preparedPromptSize = promptSize;
             OnPropertyChanged(nameof(PromptSizeDisplay));
             operation?.UpdateContext($"{selectedExecution.Display}\nProfiles: {string.Join(", ", profileIds.Select(id => BuiltInProfiles.All.Single(profile => profile.Id == id).Name))}\nScope: {forScope}\n{PromptSizeDisplay}");
+            if (promptSize.ContextClass == ReviewContextClass.Unsupported)
+                throw new ReviewValidationException("This review exceeds AI Review Desk's supported context size of 1,600,000 composed prompt characters. Use Selected Paths to reduce the review scope.");
             if (promptSize.ContextClass == ReviewContextClass.Large)
             {
                 if (selectedExecution.IsAutoModel)
@@ -630,9 +632,9 @@ public sealed class DeskViewModel : ObservableObject
                 if (row?.Status != CertificationStatus.Certified || row.Certificate == null)
                     throw new ReviewValidationException($"This review has a large context. {CopilotModelPolicy.DisplayName(selectedExecution.ModelId)} has no valid basic certificate. Test compatibility, use Selected Paths to reduce scope, or choose a model with large-context certification.");
                 var live = metadata.Models.SingleOrDefault(candidate => candidate.Id == selectedExecution.ModelId);
-                var reason = live == null ? "Live model metadata is unavailable." : CertificationContract.LargeContextInvalidReason(row.Certificate, live, metadata.CliVersion, selectedExecution.ReasoningEffort, promptSize.CharacterCount);
+                var reason = live == null ? "Live model metadata is unavailable." : CertificationContract.LargeContextInvalidReason(row.Certificate, live, metadata.CliVersion, selectedExecution.ReasoningEffort);
                 if (reason != null)
-                    throw new ReviewValidationException($"This review has a large context. {live?.Name ?? selectedExecution.ModelId} has not been certified for reviews of this size. {reason} Test large-context compatibility, use Selected Paths to reduce scope, or choose another model with a valid large-context certificate.");
+                    throw new ReviewValidationException($"This review has a large context. {live?.Name ?? selectedExecution.ModelId} has not been certified for the Large v2 tier. {reason} Test large-context compatibility, use Selected Paths to reduce scope, or choose another model with a valid Large v2 certificate.");
             }
             var progress = new Progress<string>(Report);
             var record = await ReviewRunner(input, profileIds, progress, cancellationToken, selectedExecution);

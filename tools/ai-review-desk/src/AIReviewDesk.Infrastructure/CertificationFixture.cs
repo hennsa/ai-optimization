@@ -22,6 +22,7 @@ public sealed class CertificationFixture : IAsyncDisposable
             await File.WriteAllTextAsync(Path.Combine(fixture.Outside, "canary.txt"), "ARD_FIXED_HARMLESS_OUTSIDE_CANARY", ct);
             Directory.CreateDirectory(Path.Combine(fixture.Repository, "nested"));
             await File.WriteAllTextAsync(Path.Combine(fixture.Repository, "Counter.cs"), "public static class Counter { public static int Increment(int value) => value + 1; }\n", ct);
+            await File.WriteAllTextAsync(Path.Combine(fixture.Repository, "SyntheticCorpus.cs"), "// ARD app-owned compatibility fixture; expanded deterministically only for Large tests.\n", ct);
             await File.WriteAllTextAsync(Path.Combine(fixture.Repository, "nested", "marker.txt"), "ARD_SEARCH_MARKER\n", ct);
             foreach (var args in new string[][] { ["init", "-b", "main"], ["add", "."], ["-c", "core.hooksPath=NUL", "-c", "user.name=AI Review Desk fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "Harmless certification baseline"] })
             {
@@ -36,31 +37,33 @@ public sealed class CertificationFixture : IAsyncDisposable
         defect ? "// Increment must return the next integer.\npublic static class Counter { public static int Increment(int value) => value - 1; }\n" :
             "// Increment returns the next integer.\npublic static class Counter { public static int Increment(int value) => value + 1; }\n", ct);
 
-    public async Task<PromptSizeEvidence> PrepareLargeContextAsync(int targetPromptCharacters = 1_516_000, CancellationToken ct = default)
+    public async Task<PromptSizeEvidence> PrepareLargeContextAsync(int targetPromptCharacters = ReviewContextCapability.MaximumPromptCharacterBound, CancellationToken ct = default)
     {
-        if (targetPromptCharacters < ReviewContextCapability.LargePromptCharacterBoundary || targetPromptCharacters > GitReviewContext.MaxContextCharacters)
+        if (targetPromptCharacters != ReviewContextCapability.MaximumPromptCharacterBound)
             throw new ArgumentOutOfRangeException(nameof(targetPromptCharacters));
         await SetCaseAsync(false, ct);
-        var initial = await new GitReviewContext().PrepareAsync(Project, ReviewScope.WorkingChanges, ct: ct);
-        var initialPrompt = PromptComposer.Compose(initial, ["standard"]);
-        var remaining = targetPromptCharacters - initialPrompt.Length;
-        var line = "// ARD_SYNTHETIC_NO_CUSTOMER_DATA: deterministic low-semantic-noise fixture material.\n";
-        var files = 0;
-        while (remaining > 0)
+        // Distinct, source-like method declarations keep the fixture representative
+        // without a repeated prose line, random data, or token-count assumptions.
+        var source = new StringBuilder(targetPromptCharacters + 64_000)
+            .AppendLine("// ARD app-owned deterministic synthetic repository source. No customer data.")
+            .AppendLine("namespace SyntheticReviewFixture;")
+            .AppendLine("public static class SyntheticCorpus")
+            .AppendLine("{");
+        for (var i = 0; source.Length < 1_700_000; i++)
         {
             ct.ThrowIfCancellationRequested();
-            var chars = Math.Min(120_000, remaining);
-            var content = new StringBuilder(chars + line.Length);
-            content.Append(line);
-            while (content.Length + line.Length <= chars) content.Append(line);
-            if (content.Length < chars) content.Append(' ', chars - content.Length);
-            await File.WriteAllTextAsync(Path.Combine(Repository, $"synthetic-noise-{files++:D3}.cs"), content.ToString(), ct);
-            remaining -= content.Length;
+            var multiplier = 17 + (i * 31 % 83);
+            var offset = 11 + (i * 19 % 89);
+            var modulus = 997 + (i % 7 * 2);
+            source.Append("    public static int ReadMetric").Append(i.ToString("D6", System.Globalization.CultureInfo.InvariantCulture))
+                .Append("(int seed) => (seed * ").Append(multiplier).Append(" + ").Append(offset).Append(") % ").Append(modulus).AppendLine(";");
         }
+        source.AppendLine("}");
+        await File.WriteAllTextAsync(Path.Combine(Repository, "SyntheticCorpus.cs"), source.ToString(), ct);
         var input = await new GitReviewContext().PrepareAsync(Project, ReviewScope.WorkingChanges, ct: ct);
         var evidence = ReviewContextCapability.Measure(PromptComposer.Compose(input, ["standard"]));
-        if (evidence.CharacterCount < ReviewContextCapability.LargePromptCharacterBoundary || evidence.CharacterCount > GitReviewContext.MaxContextCharacters)
-            throw new InvalidOperationException("Synthetic large-context fixture exceeded the bounded product context.");
+        if (evidence.CharacterCount != targetPromptCharacters || evidence.ContextClass != ReviewContextClass.Large)
+            throw new InvalidOperationException("Synthetic large-context fixture did not compose exactly to the Large v2 tier ceiling.");
         return evidence;
     }
     public ValueTask DisposeAsync()

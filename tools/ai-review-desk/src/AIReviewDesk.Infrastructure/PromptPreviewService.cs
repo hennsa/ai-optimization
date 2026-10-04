@@ -11,7 +11,7 @@ public sealed record PreparedPromptPreview(ReviewInput Input, string Prompt, Pro
 public sealed class PromptPreviewService
 {
     private readonly Func<PromptPreviewRequest, IProgress<string>?, CancellationToken, Task<ReviewInput>> prepare;
-    public PromptPreviewService() : this((request, progress, ct) => new GitReviewContext().PrepareAsync(request.Project, request.Scope, request.Paths, ct, preview: true, progress: progress)) { }
+    public PromptPreviewService() : this((request, progress, ct) => new GitReviewContext().PrepareAsync(request.Project, request.Scope, request.Paths, ct, preview: true, progress: progress, profileIds: request.Profiles)) { }
     internal PromptPreviewService(Func<PromptPreviewRequest, IProgress<string>?, CancellationToken, Task<ReviewInput>> prepare) => this.prepare = prepare;
 
     public Task<PreparedPromptPreview> PrepareAsync(PromptPreviewRequest request, IProgress<string>? progress = null, CancellationToken ct = default)

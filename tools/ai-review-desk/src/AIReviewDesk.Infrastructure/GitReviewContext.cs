@@ -10,9 +10,9 @@ public sealed class GitReviewContext
     private readonly Func<string, CancellationToken, Task<string>> executionFingerprint;
     public GitReviewContext() => executionFingerprint = FingerprintAsync;
     internal GitReviewContext(Func<string, CancellationToken, Task<string>> fingerprint) => executionFingerprint = fingerprint;
-    // Allows the evidence-backed ~1.52M composed-prompt probe while preserving the
-    // independent 1.6M final-context ceiling below.
-    private const int MaxDiffCharacters = 1_550_000;
+    // Absolute content ceiling. The per-run effective budget is derived from the
+    // exact PromptComposer overhead and is always lower than this final-prompt cap.
+    private const int MaxDiffCharacters = ReviewContextCapability.MaximumPromptCharacterBound;
     internal const int MaxContextCharacters = ReviewContextCapability.MaximumPromptCharacterBound;
     private const int MaxUntrackedBytes = 128 * 1024;
 
@@ -21,18 +21,18 @@ public sealed class GitReviewContext
         ReviewScope scope,
         IReadOnlyList<string>? selectedPaths = null,
         CancellationToken ct = default,
-        bool preview = false, IProgress<string>? progress = null)
+        bool preview = false, IProgress<string>? progress = null, IEnumerable<string>? profileIds = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ct.ThrowIfCancellationRequested();
         if (!Enum.IsDefined(scope)) throw new InvalidOperationException("The selected review scope is not supported.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
-        try { return await PrepareCoreAsync(project, scope, selectedPaths, linked.Token, preview, progress); }
+        try { return await PrepareCoreAsync(project, scope, selectedPaths, linked.Token, preview, progress, profileIds); }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new PreparationException(PreparationFailure.Timeout); }
     }
 
-    private async Task<ReviewInput> PrepareCoreAsync(ProjectRegistration project, ReviewScope scope, IReadOnlyList<string>? selectedPaths, CancellationToken ct, bool preview, IProgress<string>? progress)
+    private async Task<ReviewInput> PrepareCoreAsync(ProjectRegistration project, ReviewScope scope, IReadOnlyList<string>? selectedPaths, CancellationToken ct, bool preview, IProgress<string>? progress, IEnumerable<string>? profileIds)
     {
         progress?.Report("Preparing repository");
         if (preview) progress?.Report("Checking preview consistency");
@@ -60,12 +60,23 @@ public sealed class GitReviewContext
             if (IsSecretPath(path))
                 throw new PreparationException(PreparationFailure.SensitiveFile);
 
+        var profileContract = profileIds ?? (project.DefaultProfileIds is { Count: > 0 } ? project.DefaultProfileIds : ["standard"]);
+        var promptBase = new ReviewInput
+        {
+            Project = project, Snapshot = snapshot, Scope = scope, SelectedPaths = paths,
+            Context = string.Empty, HasReviewableChanges = effectivePaths.Count > 0,
+            IsPreview = preview, Fingerprint = preview ? "" : before
+        };
+        var contextBudget = PromptComposer.AvailableContextCharacters(promptBase, profileContract, MaxContextCharacters);
+        if (contextBudget < 128)
+            throw new ReviewValidationException("The composed review prompt exceeds AI Review Desk's supported context size of 1,600,000 characters. Use Selected Paths to reduce the review scope.");
+
         progress?.Report("Building review context");
         var context = effectivePaths.Count == 0
             ? (scope == ReviewScope.BranchVsBase ? "No branch changes are currently present compared with the configured base." : "No working changes are currently present.")
             : scope == ReviewScope.BranchVsBase
-            ? await BuildBranchContextAsync(root, snapshot, effectivePaths, ct)
-            : await BuildWorkingContextAsync(root, effectivePaths, ct, scope == ReviewScope.SelectedPaths);
+            ? await BuildBranchContextAsync(root, snapshot, effectivePaths, contextBudget, ct)
+            : await BuildWorkingContextAsync(root, effectivePaths, contextBudget, ct, scope == ReviewScope.SelectedPaths);
 
         if (preview) progress?.Report("Rechecking preview consistency");
         var after = preview ? await PreviewStampAsync(root, ct) : await ExecutionFingerprintAsync(root, ct, progress);
@@ -272,15 +283,15 @@ public sealed class GitReviewContext
         return selected.ToArray();
     }
 
-    private static async Task<string> BuildBranchContextAsync(string root, RepositorySnapshot snapshot, IReadOnlyList<string> paths, CancellationToken ct)
+    private static async Task<string> BuildBranchContextAsync(string root, RepositorySnapshot snapshot, IReadOnlyList<string> paths, int contextBudget, CancellationToken ct)
     {
         var args = new List<string> { "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--binary", snapshot.MergeBaseSha!, snapshot.HeadSha!, "--" };
         // Entire branch scope needs no per-file arguments. Windows limits command-line size.
-        var (diff, truncated) = await RunGitBoundedAsync(root, args, MaxDiffCharacters, ct);
-        return FinishContext($"Scope: branch {snapshot.Branch} versus {snapshot.BaseRef} (merge-base {snapshot.MergeBaseSha}).", diff, truncated, []);
+        var (diff, truncated) = await RunGitBoundedAsync(root, args, Math.Min(MaxDiffCharacters, contextBudget), ct);
+        return FinishContext($"Scope: branch {snapshot.Branch} versus {snapshot.BaseRef} (merge-base {snapshot.MergeBaseSha}).", diff, truncated, [], contextBudget);
     }
 
-    private static async Task<string> BuildWorkingContextAsync(string root, IReadOnlyList<string> paths, CancellationToken ct, bool selectedScope)
+    private static async Task<string> BuildWorkingContextAsync(string root, IReadOnlyList<string> paths, int contextBudget, CancellationToken ct, bool selectedScope)
     {
         if (selectedScope && paths.Sum(p => p.Length + 16) > 24_000)
         {
@@ -291,8 +302,10 @@ public sealed class GitReviewContext
         if (selectedScope) stagedArgs.AddRange(literal);
         var unstagedArgs = new List<string> { "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", "--binary", "--" };
         if (selectedScope) unstagedArgs.AddRange(literal);
-        var staged = await RunGitBoundedAsync(root, stagedArgs, MaxDiffCharacters / 2, ct);
-        var unstaged = await RunGitBoundedAsync(root, unstagedArgs, MaxDiffCharacters / 2, ct);
+        // Each side may independently fill the available prompt budget. The final
+        // combined context is then clipped once, with the established marker.
+        var staged = await RunGitBoundedAsync(root, stagedArgs, Math.Min(MaxDiffCharacters, contextBudget), ct);
+        var unstaged = await RunGitBoundedAsync(root, unstagedArgs, Math.Min(MaxDiffCharacters, contextBudget), ct);
         var sb = new StringBuilder();
         if (!string.IsNullOrEmpty(staged.Text)) sb.AppendLine("### Staged changes").AppendLine(staged.Text);
         if (!string.IsNullOrEmpty(unstaged.Text)) sb.AppendLine("### Unstaged changes").AppendLine(unstaged.Text);
@@ -324,28 +337,34 @@ public sealed class GitReviewContext
                 continue;
             }
             var content = Encoding.UTF8.GetString(bytes);
-            if (sb.Length + content.Length > MaxDiffCharacters)
+            if (sb.Length + content.Length > Math.Min(MaxDiffCharacters, contextBudget))
             {
                 omitted.Add($"{path} (review context size limit)");
                 continue;
             }
             sb.AppendLine($"### Untracked file: {path}").AppendLine(content);
         }
-        return FinishContext("Scope: current working changes (staged, unstaged, and selected untracked file content).", sb.ToString(), truncated, omitted);
+        return FinishContext("Scope: current working changes (staged, unstaged, and selected untracked file content).", sb.ToString(), truncated, omitted, contextBudget);
     }
 
-    private static string FinishContext(string header, string diff, bool truncated, IReadOnlyList<string> omitted)
+    private static string FinishContext(string header, string diff, bool truncated, IReadOnlyList<string> omitted, int contextBudget)
     {
         var builder = new StringBuilder(header).AppendLine();
         if (!string.IsNullOrWhiteSpace(diff)) builder.AppendLine(diff);
         if (truncated) builder.AppendLine("[Diff context truncated at the application size limit.]");
         foreach (var item in omitted.Take(100)) builder.AppendLine($"[Untracked content omitted: {item}]");
         if (omitted.Count > 100) builder.AppendLine($"[{omitted.Count - 100} additional untracked files omitted at the context size limit.]");
-        if (builder.Length > MaxContextCharacters)
+        if (builder.Length > contextBudget)
         {
-            builder.Length = MaxContextCharacters - 100;
-            if (char.IsHighSurrogate(builder[^1])) builder.Length--;
-            builder.AppendLine().AppendLine("[Review context truncated at the application size limit.]");
+            var marker = Environment.NewLine + "[Review context truncated at the application size limit.]";
+            var prefixLength = Math.Max(0, contextBudget - marker.Length);
+            builder.Length = prefixLength;
+            if (builder.Length > 0 && char.IsHighSurrogate(builder[^1]))
+            {
+                builder.Length--;
+                builder.Append(' ');
+            }
+            builder.Append(marker);
         }
         return builder.ToString();
     }

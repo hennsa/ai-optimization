@@ -21,6 +21,7 @@ public sealed class LargeProtocolTests
         Assert.Equal(3000, input.Snapshot.UntrackedCount);
         Assert.InRange(input.Context.Length, 1_400_000, GitReviewContext.MaxContextCharacters);
         var prompt = PromptComposer.Compose(input, ["standard"]);
+        Assert.True(prompt.Length <= ReviewContextCapability.MaximumPromptCharacterBound);
         var echo = Frame("user.message", new { content = prompt });
         Assert.True(echo.Length > 2 * 1024 * 1024);
         Assert.True(echo.Length < CopilotProcess.MaxFrameBytes);

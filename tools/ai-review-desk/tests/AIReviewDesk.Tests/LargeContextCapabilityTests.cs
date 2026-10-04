@@ -1,11 +1,32 @@
 using AIReviewDesk.App;
 using AIReviewDesk.Core;
 using AIReviewDesk.Infrastructure;
+using Repo = AIReviewDesk.Tests.GitReviewContextTests.TemporaryGitRepository;
 
 namespace AIReviewDesk.Tests;
 
 public sealed class LargeContextCapabilityTests
 {
+    [Fact]
+    public async Task Unsupported_prompt_is_rejected_before_Copilot_account_or_model_execution()
+    {
+        using var repo = new Repo();
+        repo.Write("base.txt", "base"); repo.Commit("initial");
+        var input = new ReviewInput
+        {
+            Project = repo.Project,
+            Snapshot = new RepositorySnapshot { Branch = "main", HeadSha = "synthetic" },
+            Scope = ReviewScope.WorkingChanges, Context = new string('x', ReviewContextCapability.MaximumPromptCharacterBound + 1),
+            Fingerprint = "synthetic", HasReviewableChanges = true
+        };
+        var service = new CopilotService(Path.Combine(Path.GetTempPath(), "ARD-Unsupported-" + Guid.NewGuid().ToString("N")));
+
+        var error = await Assert.ThrowsAsync<ReviewValidationException>(() => service.RunAsync(input, ["standard"]));
+
+        Assert.Contains("supported context size", error.Message);
+        Assert.Contains("Selected Paths", error.Message);
+    }
+
     [Fact]
     public async Task Large_gate_blocks_explicit_and_auto_before_runner_and_selected_paths_reduce_scope()
     {

@@ -2,28 +2,42 @@
 
 ## Why this exists
 
-Two broad real Sonnet 5.5 / High reviews produced output that failed the strict raw JSON contract, even though controlled small compatibility calls passed. A small deterministic fixture therefore establishes basic compatibility only; it does not establish output-envelope reliability near the size of broad repository reviews. Native Copilot response-schema support remains a separate investigation and is not assumed here.
+Two broad real Sonnet 5.5 / High reviews produced output that failed the strict raw JSON contract, even though controlled small compatibility calls passed. The small deterministic fixture establishes basic compatibility only. It does not establish output-envelope reliability near the size of broad repository reviews. Native Copilot response-schema support remains deferred.
 
-## Product size contract
+## Large v2 product size contract
 
-`large-context-1` classifies a composed prompt as **Large** at 1,500,000 characters or more. The boundary is deliberately just below the observed 1,516,396-character VIV prompt, so the reproduced workload is unambiguously gated. It is a product risk boundary, not a provider token limit. The review context ceiling remains 1,600,000 characters; the bounded diff/context input allowance is 1,550,000 characters so the synthetic certification fixture can reach the observed prompt band while remaining below the final context ceiling.
+The versioned product contract is `large-context-2`:
 
-Preview and fresh Start Review preparation measure the exact composed prompt's UTF-16 .NET character count and UTF-8 byte count. Neither is presented as a token count. The runner may retain Copilot-emitted numeric usage telemetry, but no prompt, source, or response body is retained as size evidence.
+- **Normal:** fewer than 1,500,000 final composed prompt characters.
+- **Large v2:** 1,500,000 through 1,600,000 final composed prompt characters, inclusive.
+- **Unsupported:** more than 1,600,000 final composed prompt characters.
+
+These are product risk boundaries, not provider token limits. The 1.5M boundary sits below the observed 1,516,396-character VIV prompt, which twice reproduced output-contract drift. The 1.6M ceiling covers the observed 1,565,905-character workload with headroom while retaining an explicit product limit.
+
+The exact prompt returned by `PromptComposer` is authoritative. Repository preparation asks that same composer for the empty-context prompt length using the actual snapshot, scope, selected paths and profiles. It subtracts that exact overhead from the 1.6M ceiling and feeds the remaining context budget into the existing bounded Git/diff collection. Any further truncation retains a visible application-limit marker. The result is measured again after production composition. Character and UTF-8 byte counts are compact evidence only; neither is represented as a token count.
+
+If a prompt somehow exceeds the ceiling, execution blocks before model launch and recommends **Selected Paths**. Re-certification cannot authorize a prompt beyond the product ceiling.
 
 ## Model capability metadata
 
-The restricted live `models.list` adapter retains only context limits and context tiers actually advertised by the pinned CLI, including `max_prompt_tokens`, `max_output_tokens`, `max_context_window_tokens`, and supported context tiers. Missing values remain unavailable. They are displayed separately from price, allowance, and certification. Context limits inform certification and drift checks; they do not confer trust by themselves.
+The restricted live `models.list` adapter retains only context limits and tiers actually advertised by pinned CLI 1.0.91, including `max_prompt_tokens`, `max_output_tokens`, `max_context_window_tokens`, and supported context tiers. Missing values remain unavailable. They appear separately from price, account allowance, and certification. They inform drift checks but do not confer trust by themselves.
 
 ## Trust and launch behavior
 
-Existing certificates remain Basic certificates. A Basic certificate authorizes normal reviews according to current policy but never implies Large support. A Large certificate is additive and bound to CLI version, model ID, reasoning, Basic certificate, authority and tool manifest, strict output-envelope/schema contract, large suite and boundary versions, tested prompt size, and reported context capability. Legacy certificates are not promoted.
+A valid Basic certificate may authorize ordinary reviews under existing policy. It never implies Large support. Large v2 requires a matching Basic certificate plus a Large v2 certificate for the CLI, model ID, reasoning effort, authority and tool manifest, strict output-envelope/schema contract, Large suite and boundary versions, and relevant advertised context limits. The certification probe runs at exactly the 1.6M composed-prompt ceiling and authorizes the complete Large v2 tier. Token usage is recorded only when emitted by Copilot; it is evidence, never a tier definition.
 
-After fresh composition and before Copilot launches, Large reviews require a valid explicit model and matching Basic plus Large certificates. Auto is blocked for Large because the concrete model is unknown before allowance is spent. The error offers three user-controlled next steps: run the explicit large-context test, switch to Selected Paths, or choose a model with a valid Large certificate. Scope is never narrowed automatically.
+Certificates from `large-context-1` remain historical evidence and do not authorize Large v2. Migration preserves their Basic status and does not infer Large v2 trust. In particular, Luna remains Basic Certified with Large v2 unverified until the explicit test is run; Sonnet 5.5 remains Needs retest.
 
-The Settings operation **Test large-context compatibility** uses a deterministic app-owned synthetic repository, the production composer, profiles, authority and strict parser, with zero-findings and known-defect probes. It is separate from basic compatibility. The app warns that the very large prompt can cost materially more, exact cost is unknown, and no customer repository is used. It is never run automatically. The generated fixture is deleted afterward; persistence contains only numeric size/token/usage evidence, context-limit snapshots, envelope/schema outcomes, probe outcomes and status.
+Large reviews require an explicit model and matching Basic plus Large v2 certificates before model launch. Auto is blocked because its runtime model is unknown before allowance is spent. Users can run the explicit Large test, select **Selected Paths**, or choose a model with Large v2 certification. Scope is never narrowed automatically.
 
-Context capability drift invalidates Large trust only when a relevant advertised limit or tier changes. Display names, prices, and other cosmetic/billing changes do not.
+## Large test operation
+
+The Settings action **Test large-context compatibility** is explicit and never runs automatically. Before starting, the app warns that it sends a very large synthetic prompt, may cost materially more than normal compatibility tests, exact cost is not known beforehand, and no customer repository is used.
+
+The fixture is generated programmatically inside an app-owned disposable repository. Its deterministic C# source declarations are synthetic and mostly low-semantic-noise; clean/zero-findings and known-defect probes use the production composer, authority, profiles, envelope and schema validation. The fixture is removed after testing. Persisted evidence contains only numeric size/token/usage information, context-limit snapshots, envelope/schema outcomes, probe outcomes and status. No prompt, source or model-response contents are stored.
+
+Context capability drift invalidates Large trust when an advertised prompt/output/context limit or context tier changes. Cosmetic model names and billing metadata do not.
 
 ## Current decision
 
-Sonnet 5.5 remains **Needs retest**. The previous controlled small calls remain Basic-only evidence and are not reused as Large evidence. No Large certification or paid model call was performed while implementing this architecture. Native response-schema support remains deferred.
+Sonnet 5.5 remains **Needs retest**. Its prior small controlled calls remain Basic-only evidence and are not reused as Large evidence. No Large certification or paid model call was performed while implementing this size-tier correction.

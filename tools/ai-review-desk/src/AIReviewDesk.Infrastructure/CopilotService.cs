@@ -130,6 +130,8 @@ public sealed partial class CopilotService
         var ids = profileIds.ToArray();
         var prompt = PromptComposer.Compose(input, ids);
         var promptSize = ReviewContextCapability.Measure(prompt);
+        if (promptSize.ContextClass == ReviewContextClass.Unsupported)
+            throw new ReviewValidationException("This review exceeds AI Review Desk's supported context size of 1,600,000 composed prompt characters. Use Selected Paths to reduce the review scope.");
         var profiles = BuiltInProfiles.All.Where(p => ids.Contains(p.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var record = new ReviewRecord
         {
@@ -157,7 +159,7 @@ public sealed partial class CopilotService
             if (!account.Available || !account.Supported) return record with { Status = ReviewStatus.Unsupported, Diagnostic = account.Message };
 
             if (promptSize.ContextClass == ReviewContextClass.Large && record.RequestedExecution!.IsAutoModel)
-                throw new ReviewValidationException("This review has a large context. Auto cannot be used because its runtime model is unknown before launch. Choose a model with large-context certification, test large-context compatibility, or use Selected Paths to reduce scope.");
+                throw new ReviewValidationException("This review has a large context. Auto cannot be used because its runtime model is unknown before launch. Choose a model with Large v2 certification, test large-context compatibility, or use Selected Paths to reduce scope.");
             if (!record.RequestedExecution!.IsAutoModel)
             {
                 var metadata = await GetMetadataAsync(cancellationToken);
@@ -166,8 +168,8 @@ public sealed partial class CopilotService
                 if (promptSize.ContextClass == ReviewContextClass.Large)
                 {
                     var live = metadata.Models.Single(m => m.Id == record.RequestedExecution.ModelId);
-                    var reason = CertificationContract.LargeContextInvalidReason(certificate, live, account.Version, record.RequestedExecution.ReasoningEffort, promptSize.CharacterCount);
-                    if (reason != null) throw new ReviewValidationException($"This review has a large context. {live.Name} has not been certified for reviews of this size. {reason} Test large-context compatibility, use Selected Paths to reduce scope, or choose another model with a valid large-context certificate.");
+                    var reason = CertificationContract.LargeContextInvalidReason(certificate, live, account.Version, record.RequestedExecution.ReasoningEffort);
+                    if (reason != null) throw new ReviewValidationException($"This review has a large context. {live.Name} has not been certified for the Large v2 tier. {reason} Test large-context compatibility, use Selected Paths to reduce scope, or choose another model with a valid Large v2 certificate.");
                 }
             }
             run = CreateRunDirectory();

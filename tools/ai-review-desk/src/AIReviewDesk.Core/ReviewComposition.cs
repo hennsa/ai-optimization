@@ -26,6 +26,15 @@ public static class ReviewOutputContract
 
 public static class PromptComposer
 {
+    /// <summary>Returns the repository-context budget left by the exact production prompt overhead.</summary>
+    public static int AvailableContextCharacters(ReviewInput input, IEnumerable<string> profileIds, int maximumPromptCharacters)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (maximumPromptCharacters < 0) throw new ArgumentOutOfRangeException(nameof(maximumPromptCharacters));
+        var fixedPrompt = Compose(input with { Context = string.Empty }, profileIds);
+        return Math.Max(0, maximumPromptCharacters - fixedPrompt.Length);
+    }
+
     public static string Compose(ReviewInput input, IEnumerable<string> profileIds)
     {
         ArgumentNullException.ThrowIfNull(input);

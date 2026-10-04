@@ -44,9 +44,11 @@ public sealed record ModelCompatibility(CopilotModelChoice Model, CertificationS
     public string TestLabel => Certificate == null ? "Test compatibility" : "Retest compatibility";
     public string ContextDisplay => Model.Context?.Display ?? "Maximum prompt tokens: Unavailable\nMaximum output tokens: Unavailable\nContext window: Unavailable\nSupported context tiers: Unavailable";
     public bool CanTestLarge => Status == CertificationStatus.Certified && Certificate != null && !string.IsNullOrEmpty(Certificate.ModelId);
-    public string LargeTestLabel => Certificate?.LargeContext?.Status == CertificationStatus.Certified ? "Retest large-context compatibility" : "Test large-context compatibility";
+    public string LargeTestLabel => Certificate?.LargeContext is { Status: CertificationStatus.Certified } large && Status == CertificationStatus.Certified &&
+        CertificationContract.LargeContextInvalidReason(Certificate, Model, Certificate.CliVersion, large.ReasoningEffort) == null
+        ? "Retest large-context compatibility" : "Test large-context compatibility";
     public string LargeContextDisplay => Certificate?.LargeContext is { } large
-        ? $"Large-context compatibility: {(large.Status == CertificationStatus.Testing ? "Testing" : large.Status == CertificationStatus.Certified && Status == CertificationStatus.Certified && CertificationContract.LargeContextInvalidReason(Certificate!, Model, Certificate!.CliVersion, large.ReasoningEffort) == null ? $"Certified up to {large.TestedPromptCharacters:N0} prompt characters" : "Needs retest")} · {large.TestedPromptUtf8Bytes:N0} UTF-8 bytes tested" + (large.ActualInputTokens is long input ? $" · {input:N0} input tokens" : " · input tokens unavailable") + (large.ActualOutputTokens is long output ? $" · {output:N0} output tokens" : " · output tokens unavailable")
+        ? $"Large-context compatibility: {(large.Status == CertificationStatus.Testing ? "Testing" : large.Status == CertificationStatus.Certified && Status == CertificationStatus.Certified && CertificationContract.LargeContextInvalidReason(Certificate!, Model, Certificate!.CliVersion, large.ReasoningEffort) == null ? $"Certified for Large v2 — prompts up to {ReviewContextCapability.MaximumPromptCharacterBound:N0} characters" : "Needs retest for the current Large context size contract")} · {large.TestedPromptCharacters:N0} prompt characters / {large.TestedPromptUtf8Bytes:N0} UTF-8 bytes tested" + (large.ActualInputTokens is long input ? $" · {input:N0} input tokens" : " · input tokens unavailable") + (large.ActualOutputTokens is long output ? $" · {output:N0} output tokens" : " · output tokens unavailable")
         : "Large-context compatibility: Not tested";
     public string Detail => $"Copilot reasoning: {string.Join(", ", Model.Efforts)}\nLive context capability (informational; separate from billing and certification):\n{ContextDisplay}" + (Certificate == null ? "" :
         $"\n{(Certificate.Source == "locally certified" && Status != CertificationStatus.Certified ? "local certification attempt" : Certificate.Source)} · CLI {Certificate.CliVersion} · {Certificate.TestedAt.LocalDateTime:g}\n{(Status == CertificationStatus.Certified ? "Certified" : "Tested")} reasoning: {string.Join(", ", Certificate.ReasoningEfforts)} · tools: {string.Join(", ", Certificate.ExpectedTools)}\nOutput: {OutputEnvelope.Label(Certificate.OutputEnvelopeId)}") + (Reason == null ? "" : $"\n{Reason}");
@@ -86,15 +88,15 @@ public static class CertificationContract
             large.AuthorityContract != AuthorityVersion || large.ToolContract != ToolVersion || !large.ExpectedTools.SequenceEqual(basic.ExpectedTools) || large.OutputContract != OutputVersion ||
             large.OutputEnvelopeId != basic.OutputEnvelopeId || large.OutputEnvelopeVersion != basic.OutputEnvelopeVersion ||
             large.SuiteVersion != ReviewContextCapability.LargeSuiteVersion || large.BoundaryVersion != ReviewContextCapability.BoundaryVersion ||
-            large.TestedPromptCharacters < ReviewContextCapability.LargePromptCharacterBoundary || large.TestedPromptCharacters > ReviewContextCapability.MaximumPromptCharacterBound ||
+            large.TestedPromptCharacters != ReviewContextCapability.MaximumPromptCharacterBound ||
             large.TestedPromptUtf8Bytes < large.TestedPromptCharacters || large.TestedPromptUtf8Bytes > (long)large.TestedPromptCharacters * 4 ||
             large.Probes.Any(probe => !probe.Passed) || !large.Probes.Any(probe => probe.Name == "zero findings" && probe.Passed) ||
             !large.Probes.Any(probe => probe.Name == "deliberate defect" && probe.Passed) ||
             large.EnvelopeObservations.Length != 2 || !large.EnvelopeObservations.Any(observation => observation.Case == "zero findings") || !large.EnvelopeObservations.Any(observation => observation.Case == "deliberate defect") ||
             large.EnvelopeObservations.Any(observation => !observation.EnvelopePassed || !observation.JsonParsed || !observation.SchemaPassed || observation.EnvelopeId != large.OutputEnvelopeId || observation.EnvelopeVersion != large.OutputEnvelopeVersion))
             return "The large-context runtime, authority, output or suite contract changed. Large-context retesting is required.";
-        if (requiredPromptCharacters is int required && required > large.TestedPromptCharacters)
-            return "This prompt exceeds the certified large-context size. Retest large-context compatibility at a representative size, use Selected Paths, or choose a model certified for this size.";
+        if (requiredPromptCharacters is int required && required > ReviewContextCapability.MaximumPromptCharacterBound)
+            return "This prompt exceeds AI Review Desk's supported context size. Use Selected Paths to reduce the review scope.";
         if (!ContextEquivalent(large.ContextCapabilityAtTest, live.Context))
             return "Advertised context limits changed since large-context certification. Large-context retesting is required.";
         return null;

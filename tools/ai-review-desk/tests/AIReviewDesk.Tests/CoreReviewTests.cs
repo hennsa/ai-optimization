@@ -48,6 +48,25 @@ public sealed class CoreReviewTests
         Assert.Equal(1, Count(prompt, "\"summary\":\"...\""));
     }
 
+    [Theory]
+    [InlineData("standard")]
+    [InlineData("standard,security")]
+    [InlineData("standard,security,tests")]
+    public void Context_budget_uses_exact_production_composer_overhead(string profileIds)
+    {
+        var profiles = profileIds.Split(',');
+        var input = Input() with { Context = "synthetic repository evidence" };
+        var emptyContextPrompt = PromptComposer.Compose(input with { Context = string.Empty }, profiles);
+        var completePrompt = PromptComposer.Compose(input, profiles);
+        var budget = PromptComposer.AvailableContextCharacters(input, profiles, ReviewContextCapability.MaximumPromptCharacterBound);
+
+        Assert.Equal(input.Context.Length, completePrompt.Length - emptyContextPrompt.Length);
+        Assert.Equal(ReviewContextCapability.MaximumPromptCharacterBound,
+            emptyContextPrompt.Length + budget);
+        Assert.Equal(ReviewContextCapability.MaximumPromptCharacterBound,
+            completePrompt.Length + budget - input.Context.Length);
+    }
+
     [Fact]
     public void NormalizeProfileIds_returns_catalogue_order_and_rejects_blank_ids()
     {

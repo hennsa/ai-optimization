@@ -35,8 +35,8 @@ public sealed partial class CopilotService
             await using var fixture = await CertificationFixture.CreateAsync(dataDirectory, ct);
             var size = await fixture.PrepareLargeContextAsync(ct: ct);
             testing = testing with { TestedPromptCharacters = size.CharacterCount, TestedPromptUtf8Bytes = size.Utf8ByteCount };
-            if (size.ContextClass != ReviewContextClass.Large || size.CharacterCount < ReviewContextCapability.LargePromptCharacterBoundary)
-                throw new ReviewValidationException("Synthetic prompt did not reach the large-context product boundary.");
+            if (size.ContextClass != ReviewContextClass.Large || size.CharacterCount != ReviewContextCapability.MaximumPromptCharacterBound)
+                throw new ReviewValidationException("Synthetic prompt did not reach the exact Large v2 tier ceiling.");
 
             progress?.Report("Testing strict zero-findings output at large context");
             var clean = await CompatibilityCallAsync(fixture, new(modelId, effort), basic.ExpectedTools, false, ct, basic.OutputEnvelopeId, timeoutOverride: TimeSpan.FromMinutes(5));

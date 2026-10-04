@@ -46,7 +46,9 @@ public sealed class CertificationTests : IDisposable
         var boundary = ReviewContextCapability.LargePromptCharacterBoundary;
         Assert.Equal(ReviewContextClass.Normal, ReviewContextCapability.Classify(boundary - 1));
         Assert.Equal(ReviewContextClass.Large, ReviewContextCapability.Classify(boundary));
-        Assert.Equal(ReviewContextClass.Large, ReviewContextCapability.Classify(boundary + 1));
+        Assert.Equal(ReviewContextClass.Large, ReviewContextCapability.Classify(1_565_905));
+        Assert.Equal(ReviewContextClass.Large, ReviewContextCapability.Classify(ReviewContextCapability.MaximumPromptCharacterBound));
+        Assert.Equal(ReviewContextClass.Unsupported, ReviewContextCapability.Classify(ReviewContextCapability.MaximumPromptCharacterBound + 1));
         var evidence = ReviewContextCapability.Measure(new string('x', boundary - 1) + "é");
         Assert.Equal(boundary, evidence.CharacterCount); Assert.Equal(boundary + 1, evidence.Utf8ByteCount);
         Assert.Equal(ReviewContextCapability.BoundaryVersion, evidence.BoundaryVersion);
@@ -61,15 +63,16 @@ public sealed class CertificationTests : IDisposable
             ToolContract = CertificationContract.ToolVersion, ExpectedTools = Certificate.ExpectedTools,
             OutputContract = CertificationContract.OutputVersion, OutputEnvelopeId = OutputEnvelope.RawJson, OutputEnvelopeVersion = OutputEnvelope.Version,
             SuiteVersion = ReviewContextCapability.LargeSuiteVersion, BoundaryVersion = ReviewContextCapability.BoundaryVersion,
-            TestedPromptCharacters = 1_516_000, TestedPromptUtf8Bytes = 1_516_000,
+            TestedPromptCharacters = ReviewContextCapability.MaximumPromptCharacterBound, TestedPromptUtf8Bytes = ReviewContextCapability.MaximumPromptCharacterBound,
             ContextCapabilityAtTest = original.Context, Status = CertificationStatus.Certified,
             Probes = [new("zero findings", true), new("deliberate defect", true)],
             EnvelopeObservations = [new("zero findings", OutputEnvelope.RawJson, OutputEnvelope.Version, true, true, true), new("deliberate defect", OutputEnvelope.RawJson, OutputEnvelope.Version, true, true, true)]
         };
         var certified = Certificate with { LargeContext = large };
         Assert.Null(CertificationContract.LargeContextInvalidReason(certified, original, "1.0.91", "high"));
-        Assert.Null(CertificationContract.LargeContextInvalidReason(certified, original, "1.0.91", "high", 1_516_000));
-        Assert.Contains("exceeds the certified", CertificationContract.LargeContextInvalidReason(certified, original, "1.0.91", "high", 1_516_001));
+        Assert.Null(CertificationContract.LargeContextInvalidReason(certified, original, "1.0.91", "high", 1_565_905));
+        Assert.Null(CertificationContract.LargeContextInvalidReason(certified, original, "1.0.91", "high", 1_600_000));
+        Assert.Contains("supported context size", CertificationContract.LargeContextInvalidReason(certified, original, "1.0.91", "high", 1_600_001));
         Assert.NotNull(CertificationContract.LargeContextInvalidReason(certified, original, "1.0.92", "high"));
         Assert.NotNull(CertificationContract.LargeContextInvalidReason(certified, original, "1.0.91", "max"));
         Assert.NotNull(CertificationContract.LargeContextInvalidReason(certified with { AuthorityContract = "changed" }, original, "1.0.91", "high"));
@@ -79,6 +82,7 @@ public sealed class CertificationTests : IDisposable
         Assert.NotNull(CertificationContract.LargeContextInvalidReason(certified with { LargeContext = large with { SuiteVersion = "old" } }, original, "1.0.91", "high"));
         Assert.NotNull(CertificationContract.LargeContextInvalidReason(certified, original with { Context = original.Context! with { MaxPromptTokens = 2_100_000 } }, "1.0.91", "high"));
         Assert.Null(CertificationContract.LargeContextInvalidReason(certified, original with { Name = "Cosmetic live name", Context = original.Context! with { SupportedContextTiers = ["standard", "large"] } }, "1.0.91", "high"));
+        Assert.NotNull(CertificationContract.LargeContextInvalidReason(certified with { LargeContext = large with { BoundaryVersion = "large-context-1", SuiteVersion = "large-context-suite-1" } }, original, "1.0.91", "high"));
     }
     [Fact] public async Task Large_capability_is_additive_persisted_and_legacy_basic_never_infers_it()
     {
@@ -88,14 +92,14 @@ public sealed class CertificationTests : IDisposable
             SuiteVersion = ReviewContextCapability.LargeSuiteVersion, BoundaryVersion = ReviewContextCapability.BoundaryVersion,
             AuthorityContract = CertificationContract.AuthorityVersion, OutputContract = CertificationContract.OutputVersion,
             ToolContract = CertificationContract.ToolVersion, ExpectedTools = Certificate.ExpectedTools,
-            OutputEnvelopeId = OutputEnvelope.RawJson, OutputEnvelopeVersion = OutputEnvelope.Version, TestedPromptCharacters = 1_516_000, TestedPromptUtf8Bytes = 1_516_000,
+            OutputEnvelopeId = OutputEnvelope.RawJson, OutputEnvelopeVersion = OutputEnvelope.Version, TestedPromptCharacters = ReviewContextCapability.MaximumPromptCharacterBound, TestedPromptUtf8Bytes = ReviewContextCapability.MaximumPromptCharacterBound,
             ActualInputTokens = 900_000, ActualOutputTokens = 600, Probes = [new("zero findings", true), new("deliberate defect", true)],
             EnvelopeObservations = [new("zero findings", OutputEnvelope.RawJson, OutputEnvelope.Version, true, true, true), new("deliberate defect", OutputEnvelope.RawJson, OutputEnvelope.Version, true, true, true)] };
         await Registry.SaveAsync(Certificate with { LargeContext = large });
         var restarted = new CertificationRegistry(root).ReadLocal().Single();
-        Assert.Equal(CertificationStatus.Certified, restarted.Status); Assert.Equal(1_516_000, restarted.LargeContext!.TestedPromptCharacters);
-        Assert.Null(CertificationContract.LargeContextInvalidReason(restarted, luna, "1.0.91", "high", 1_516_000));
-        var json = File.ReadAllText(Registry.FilePath); Assert.DoesNotContain("synthetic-noise", json); Assert.DoesNotContain("ARD_SYNTHETIC", json);
+        Assert.Equal(CertificationStatus.Certified, restarted.Status); Assert.Equal(1_600_000, restarted.LargeContext!.TestedPromptCharacters);
+        Assert.Null(CertificationContract.LargeContextInvalidReason(restarted, luna, "1.0.91", "high", 1_565_905));
+        var json = File.ReadAllText(Registry.FilePath); Assert.DoesNotContain("SyntheticCorpus", json); Assert.DoesNotContain("ARD app-owned", json);
     }
     [Fact] public async Task Existing_Sonnet_needs_retest_record_remains_basic_only()
     {
@@ -105,17 +109,20 @@ public sealed class CertificationTests : IDisposable
         var row = Registry.Discover([new(sonnet.ModelId, sonnet.DisplayName, sonnet.ReasoningEfforts)], "1.0.91").Single(candidate => candidate.Model.Id == sonnet.ModelId);
         Assert.Equal(CertificationStatus.NeedsRetest, row.Status); Assert.Null(row.Certificate!.LargeContext);
     }
-    [Fact] public async Task Synthetic_large_fixture_reaches_product_band_without_customer_data_and_is_cleaned()
+    [Fact] public async Task Synthetic_large_fixture_composes_exactly_to_product_ceiling_without_customer_data_and_is_cleaned()
     {
         string rootPath;
         await using (var fixture = await CertificationFixture.CreateAsync(root))
         {
             rootPath = fixture.Root;
-            var evidence = await fixture.PrepareLargeContextAsync(1_516_396);
-            Assert.InRange(evidence.CharacterCount, 1_500_000, 1_600_000);
+            var evidence = await fixture.PrepareLargeContextAsync();
+            Assert.Equal(ReviewContextCapability.MaximumPromptCharacterBound, evidence.CharacterCount);
+            Assert.Equal(ReviewContextClass.Large, evidence.ContextClass);
             Assert.Equal(evidence.CharacterCount, evidence.Utf8ByteCount);
-            var synthetic = Directory.GetFiles(fixture.Repository, "synthetic-noise-*.cs"); Assert.NotEmpty(synthetic);
-            Assert.All(synthetic, file => Assert.Contains("ARD_SYNTHETIC_NO_CUSTOMER_DATA", File.ReadAllText(file)));
+            var synthetic = Path.Combine(fixture.Repository, "SyntheticCorpus.cs");
+            Assert.True(new FileInfo(synthetic).Length > 1_500_000);
+            Assert.Contains("ARD app-owned deterministic synthetic repository source. No customer data.", File.ReadAllText(synthetic));
+            Assert.Contains("ReadMetric000000", File.ReadAllText(synthetic));
         }
         Assert.False(Directory.Exists(rootPath));
     }
