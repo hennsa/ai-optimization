@@ -66,7 +66,7 @@ public sealed class ModelUsageTests : IDisposable
     public async Task Metadata_path_rejects_credential_and_agent_RPCS_before_any_process_access()
     {
         using var process = new Process(); var rpc = new CopilotMetadataRpc(process);
-        foreach (var method in new[] { "account.getCurrentAuth", "account.getAllUsers", "auth.getStatus", "session.create", "session.send", "tools.list" })
+        foreach (var method in new[] { "account.getCurrentAuth", "account.getAllUsers", "auth.getStatus", "session.create", "session.send", "session.delete", "tools.list" })
             await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.RequestAsync(method, CancellationToken.None));
     }
 
@@ -89,9 +89,9 @@ public sealed class ModelUsageTests : IDisposable
     {
         using var json = JsonDocument.Parse("""{"models":[{"id":"gpt-6-luna"},{"id":"claude-sonnet-5.5","supportedReasoningEfforts":["low","high","new-effort"],"policy":{"state":"enabled"}},{"id":"claude-sonnet-5","policy":{"state":"disabled"}},{"id":"claude-haiku-4.5"}]}""");
         var models = CopilotMetadataParser.Models(json.RootElement);
-        Assert.Equal(new[] { "auto", "claude-sonnet-5.5" }, models.Select(m => m.Id));
-        Assert.Equal(new[] { "auto", "low", "high" }, models[1].Efforts);
-        Assert.Throws<ReviewValidationException>(() => CopilotModelPolicy.Validate(new("claude-sonnet-5.5", "max"), "1.0.91", models));
+        Assert.Equal(new[] { "auto", "gpt-6-luna", "claude-sonnet-5.5", "claude-haiku-4.5" }, models.Select(m => m.Id));
+        Assert.Equal(new[] { "auto", "low", "high", "new-effort" }, models[2].Efforts);
+        Assert.Throws<ReviewValidationException>(() => CopilotModelPolicy.Validate(new("claude-sonnet-5.5", "max"), "1.0.91", new CertificationRegistry(root).Selectable(models, "1.0.91")));
     }
 
     [Theory]
@@ -136,7 +136,7 @@ public sealed class ModelUsageTests : IDisposable
         var refreshed = CopilotModelPolicy.Verified.Select(m => m with { Efforts = m.Efforts.ToArray() }).Reverse().ToArray();
         vm.SetMetadata(new(refreshed, null, "Unavailable"));
         Assert.Same(models, vm.Models); Assert.Same(efforts, vm.EffortChoices);
-        Assert.Same(refreshed.Single(m => m.Id == "claude-sonnet-5.5"), vm.SelectedModel);
+        Assert.Same(vm.Models.Single(m => m.Id == "claude-sonnet-5.5"), vm.SelectedModel);
         Assert.Contains(vm.SelectedReasoningChoice!, vm.EffortChoices);
         Assert.Equal(new ReviewExecutionSettings("claude-sonnet-5.5", "medium"), vm.Execution);
     }

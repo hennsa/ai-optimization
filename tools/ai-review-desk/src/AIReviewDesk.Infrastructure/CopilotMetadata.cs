@@ -6,10 +6,10 @@ using AIReviewDesk.Core;
 
 namespace AIReviewDesk.Infrastructure;
 
-public sealed record CopilotMetadata(IReadOnlyList<CopilotModelChoice> Models, CopilotQuota? Quota, string Message)
+public sealed record CopilotMetadata(IReadOnlyList<CopilotModelChoice> Models, CopilotQuota? Quota, string Message, bool ModelsAvailable = true, string? CliVersion = CopilotContract.SupportedVersion)
 {
     public static CopilotMetadata Unavailable { get; } = new([CopilotModelPolicy.Auto], null,
-        "Account quota is not available through the verified CLI 1.0.91 integration. Refresh to check availability.");
+        "Account quota is not available through the verified CLI 1.0.91 integration. Refresh to check availability.", ModelsAvailable: false, CliVersion: null);
     public string UsageDisplay => Quota?.Display ?? Message;
 }
 
@@ -85,13 +85,15 @@ public static class CopilotMetadataParser
         {
             var id = entry.GetProperty("id").GetString()!;
             if (!ids.Add(id)) throw new InvalidOperationException("Ambiguous models metadata.");
-            var verified = CopilotModelPolicy.Verified.FirstOrDefault(m => m.Id == id && id != "auto");
-            if (verified == null) continue;
+            if (string.IsNullOrWhiteSpace(id) || id.Length > 128 || id.StartsWith('-') || id.Any(c => char.IsControl(c) || char.IsWhiteSpace(c))) throw new InvalidOperationException("Invalid model identity.");
+            if (id == "auto") continue;
             if (entry.TryGetProperty("policy", out var policy) && policy.GetProperty("state").GetString() != "enabled") continue;
             var efforts = entry.TryGetProperty("supportedReasoningEfforts", out var values)
-                ? values.EnumerateArray().Select(v => v.GetString()).ToArray() : [];
-            // Pinned policy intersected with the current authenticated account; never guess new models/efforts.
-            models.Add(verified with { Efforts = verified.Efforts.Where(e => e == "auto" || efforts.Contains(e)).ToArray() });
+                ? values.EnumerateArray().Select(v => v.GetString() ?? throw new InvalidOperationException("Invalid effort.")).Distinct().ToArray() : [];
+            if (efforts.Length > 16 || efforts.Any(e => e.Length is < 1 or > 32 || e.StartsWith('-') || e.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)))) throw new InvalidOperationException("Invalid efforts metadata.");
+            var name = entry.TryGetProperty("name", out var display) && display.ValueKind == JsonValueKind.String ? display.GetString()! : CopilotModelPolicy.DisplayName(id);
+            if (name.Length > 128) throw new InvalidOperationException("Invalid model display name.");
+            models.Add(new(id, name, ["auto", .. efforts.Where(e => e != "auto")]));
         }
         return models;
     }

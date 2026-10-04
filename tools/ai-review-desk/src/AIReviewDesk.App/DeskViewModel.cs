@@ -73,7 +73,7 @@ public sealed class DeskViewModel : ObservableObject
     public string ExecutionDisplay => execution.Display;
     public string AutoExplanation => CopilotModelPolicy.AutoExplanation;
     public string ExecutionNotice { get => executionNotice; private set => SetProperty(ref executionNotice, value); }
-    public string ReasoningHint => execution.IsAutoModel ? "Choose an explicit model to override reasoning. Auto leaves both settings to the CLI." : EffortChoices.Count == 1 ? "This model exposes no reasoning override; Auto is required." : "Only this model's verified reasoning levels are shown. Auto passes no effort override.";
+    public string ReasoningHint => execution.IsAutoModel ? "Choose an explicit model to override reasoning. Auto leaves both settings to the CLI." : EffortChoices.Count == 1 ? "Only this model’s certified reasoning level is available." : "Only this model's verified reasoning levels are shown. Auto passes no effort override.";
     public string CopilotUsage => metadata.UsageDisplay;
     private void ApplyExecution(ReviewExecutionSettings value)
     {
@@ -88,10 +88,40 @@ public sealed class DeskViewModel : ObservableObject
     {
         var requested = execution;
         metadata = value; models.Clear();
-        foreach (var model in value.Models) models.Add(model);
+        var registry = new CertificationRegistry(DataDirectory);
+        foreach (var model in registry.Selectable(value.Models, value.CliVersion)) models.Add(model);
+        CompatibilityModels.Clear();
+        foreach (var row in registry.Discover(value.Models, value.CliVersion)) CompatibilityModels.Add(value.ModelsAvailable ? row :
+            row with { Status = CertificationStatus.NeedsRetest, Reason = "Live model availability is unavailable. Refresh before testing or selecting an explicit model." });
         OnPropertyChanged(nameof(Models)); OnPropertyChanged(nameof(CopilotUsage));
         ApplyExecution(CopilotModelPolicy.Adjust(requested, models, out var adjustment));
         ExecutionNotice = adjustment ?? "";
+    }
+    public ObservableCollection<ModelCompatibility> CompatibilityModels { get; } = [];
+    private CancellationTokenSource? compatibilityCancellation;
+    private string compatibilityProgress = "", compatibilityResult = "";
+    public bool IsCompatibilityTesting => compatibilityCancellation != null;
+    public string CompatibilityProgress { get => compatibilityProgress; private set => SetProperty(ref compatibilityProgress, value); }
+    public string CompatibilityResult { get => compatibilityResult; private set => SetProperty(ref compatibilityResult, value); }
+    public string CompatibilityPolicy => CertificationContract.Policy;
+    public void CancelCompatibility() => compatibilityCancellation?.Cancel();
+    public async Task TestCompatibilityAsync(ModelCompatibility model)
+    {
+        if (IsCompatibilityTesting || !Interactive || !model.CanTest) return;
+        compatibilityCancellation = new(); OnPropertyChanged(nameof(IsCompatibilityTesting));
+        var index = CompatibilityModels.IndexOf(model);
+        if (index >= 0) CompatibilityModels[index] = model with { Status = CertificationStatus.Testing };
+        try
+        {
+            var effort = model.Model.Efforts.Contains("high") ? "high" : model.Model.Efforts.First();
+            var result = await copilot.TestCompatibilityAsync(model.Model.Id, effort, new Progress<string>(s => CompatibilityProgress = s), compatibilityCancellation.Token);
+            CompatibilityResult = $"{result.DisplayName} — {(result.Status == CertificationStatus.Certified ? "Certified" : "Not certified")}\n" +
+                (result.FailureReason ?? $"CLI {result.CliVersion} · reasoning: {string.Join(", ", result.ReasoningEfforts)} · tools: {string.Join(", ", result.ExpectedTools)}") +
+                (result.Usage == null ? "\nUsage unavailable for interrupted or failed calls." : "\nRecorded completed-call usage (interrupted calls may be absent):\n" + result.Usage.Display);
+            SetMetadata(await copilot.GetMetadataAsync());
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
+        finally { compatibilityCancellation.Dispose(); compatibilityCancellation = null; OnPropertyChanged(nameof(IsCompatibilityTesting)); }
     }
     public IReadOnlyList<ReviewProfile> Profiles => BuiltInProfiles.All;
     public ObservableCollection<ProfileChoice> ProfileChoices { get; } = [];
@@ -356,7 +386,7 @@ public sealed class DeskViewModel : ObservableObject
 
     public async Task StartReviewAsync(ReviewScope forScope, IReadOnlyList<string> selectedPaths)
     {
-        if (reviewCancellation != null) return;
+        if (reviewCancellation != null || IsCompatibilityTesting) return;
         Error = "";
         LatestReview = null;
         ReviewFindings.Clear();
@@ -382,6 +412,7 @@ public sealed class DeskViewModel : ObservableObject
             _ = PromptComposer.Compose(input, profileIds);
             var progress = new Progress<string>(message => ReviewProgress = message);
             var record = await copilot.RunAsync(input, profileIds, progress, cancellationToken, selectedExecution);
+            SetMetadata(metadata); // Surface locally persisted runtime suspension without another model call.
             ShowHistoryRecord(record);
             await history.SaveAsync(record);
             await LoadHistoryAsync(record.ProjectId);

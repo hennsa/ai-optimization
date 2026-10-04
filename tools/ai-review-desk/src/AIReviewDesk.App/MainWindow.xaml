@@ -276,6 +276,22 @@
        </WrapPanel>
       </StackPanel></Border>
       <Border Style="{StaticResource Card}"><StackPanel>
+       <TextBlock Text="Model compatibility" Style="{StaticResource SectionTitle}" />
+       <TextBlock Text="Live discovery describes account availability. Only valid certified models can review projects. Testing makes small Copilot calls and can consume account allowance; exact cost is not known beforehand." Style="{StaticResource Caption}" />
+       <TextBlock Text="{Binding CompatibilityProgress}" TextWrapping="Wrap" Margin="0,8" />
+       <ui:Button Content="Cancel compatibility test" Click="OnCancelCompatibility" Visibility="{Binding IsCompatibilityTesting, Converter={StaticResource BoolVisibility}}" />
+       <TextBlock Text="{Binding CompatibilityResult}" TextWrapping="Wrap" Margin="0,8" />
+       <ItemsControl ItemsSource="{Binding CompatibilityModels}"><ItemsControl.ItemTemplate><DataTemplate>
+        <StackPanel Margin="0,12,0,0">
+         <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
+         <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" />
+         <ui:Button Content="{Binding TestLabel}" IsEnabled="{Binding CanTest}" Tag="{Binding}" Click="OnTestCompatibility" HorizontalAlignment="Left" Margin="0,6" />
+         <Expander Header="Certification evidence"><TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" /></Expander>
+        </StackPanel>
+       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+       <Expander Header="Compatibility policy" Margin="0,12,0,0"><TextBlock Text="{Binding CompatibilityPolicy}" TextWrapping="Wrap" /></Expander>
+      </StackPanel></Border>
+      <Border Style="{StaticResource Card}"><StackPanel>
        <TextBlock Text="Data and history" Style="{StaticResource SectionTitle}" />
        <TextBlock Text="Project registrations, review history and preferences are stored locally. Removing a project only removes its registration; repository files stay in place." Style="{StaticResource Caption}" />
        <TextBlock Text="{Binding DataDirectory}" TextWrapping="Wrap" Margin="0,12,0,12" />
@@ -291,6 +307,10 @@
    </ScrollViewer>
   </Grid>
   <Grid Grid.Row="2">
+   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,16,4" Visibility="{Binding IsCompatibilityTesting, Converter={StaticResource BoolVisibility}}">
+    <TextBlock Text="{Binding CompatibilityProgress}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,0,12,0" />
+    <ui:Button Content="Cancel compatibility test" Click="OnCancelCompatibility" />
+   </StackPanel>
    <ProgressBar Height="3" IsIndeterminate="True" Visibility="{Binding Busy, Converter={StaticResource BoolVisibility}}" AutomationProperties.Name="Loading repository state" />
    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,16,4" Visibility="{Binding IsReviewRunning, Converter={StaticResource BoolVisibility}}">
     <TextBlock Text="{Binding ReviewProgress}" VerticalAlignment="Center" Margin="0,0,12,0" />

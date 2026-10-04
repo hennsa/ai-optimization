@@ -64,12 +64,18 @@ public static partial class CopilotContract
         return info;
     }
 
-    public static IReadOnlyList<string> ReviewArguments(string repository, string transientLogs, ReviewExecutionSettings? execution = null, string? usageFile = null)
+    public static IReadOnlyList<string> ReviewArguments(string repository, string transientLogs, ReviewExecutionSettings? execution = null, string? usageFile = null, ModelCertificate? certificate = null)
     {
         execution ??= new();
-        CopilotModelPolicy.Validate(execution, SupportedVersion);
+        if (certificate == null) CopilotModelPolicy.Validate(execution, SupportedVersion);
+        else
+        {
+            if (certificate.Status != CertificationStatus.Certified || certificate.ModelId != execution.ModelId ||
+                !certificate.ReasoningEfforts.Contains(execution.ReasoningEffort) || CertificationContract.InvalidReason(certificate, SupportedVersion, CertificationContract.BundledTools) != null)
+                throw new ReviewValidationException("The model certificate is not applicable.");
+        }
         var arguments = new List<string> { "--add-dir", Path.GetFullPath(repository) };
-        arguments.AddRange(AuthorityArguments);
+        arguments.AddRange(AuthorityArgumentsFor(certificate?.TechnicalTools ?? AllowedTools));
         arguments.AddRange(["--output-format", "json", "--stream", "on", "--log-level", "none", "--log-dir", transientLogs]);
         if (!execution.IsAutoModel) arguments.AddRange(["--model", execution.ModelId]);
         if (execution.ReasoningEffort != "auto") arguments.AddRange(["--reasoning-effort", execution.ReasoningEffort]);
@@ -81,10 +87,11 @@ public static partial class CopilotContract
     public static IReadOnlyList<string> MetadataArguments(string transientLogs) =>
         ["--headless", "--stdio", .. AuthorityArguments, "--log-level", "none", "--log-dir", transientLogs];
 
-    private static IReadOnlyList<string> AuthorityArguments =>
+    private static IReadOnlyList<string> AuthorityArguments => AuthorityArgumentsFor(AllowedTools);
+    private static IReadOnlyList<string> AuthorityArgumentsFor(IEnumerable<string> tools) =>
     [
         "--disallow-temp-dir",
-        "--available-tools", "view,grep,glob", "--allow-tool", "view,grep,glob", "--deny-tool", DeniedTools,
+        "--available-tools", string.Join(",", tools), "--allow-tool", string.Join(",", tools), "--deny-tool", DeniedTools,
         "--disable-builtin-mcps", "--no-custom-instructions", "--no-remote", "--no-remote-export",
         "--no-ask-user", "--no-auto-update", "--no-eager-powershell-resolution", "--no-experimental"
     ];

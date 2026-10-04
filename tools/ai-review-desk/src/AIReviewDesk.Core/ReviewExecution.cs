@@ -18,29 +18,26 @@ public static class CopilotModelPolicy
     public const string Version = "1.0.91";
     public static ReviewExecutionSettings Default { get; } = new("claude-sonnet-5.5", "high");
     public static CopilotModelChoice Auto { get; } = new("auto", "Auto", ["auto"]);
-    public static IReadOnlyList<CopilotModelChoice> Verified { get; } =
-    [
-        Auto,
-        new("claude-sonnet-5", "Claude Sonnet 5", ["auto", "low", "medium", "high", "xhigh", "max"]),
-        new("claude-sonnet-5.5", "Claude Sonnet 5.5", ["auto", "low", "medium", "high", "xhigh", "max"])
-    ];
-    public const string AutoExplanation = "Auto passes no override and uses the CLI's normal default. Explicit choices are verified for CLI 1.0.91 and this account; other models may not satisfy the review tool contract.";
+    public static IReadOnlyList<CopilotModelChoice> Verified => [Auto, .. CertificationContract.BundledModels
+        .Where(c => c.Status == CertificationStatus.Certified && CertificationContract.InvalidReason(c, Version, CertificationContract.BundledTools) == null)
+        .Select(c => new CopilotModelChoice(c.ModelId, c.DisplayName, c.ReasoningEfforts))];
+    public const string AutoExplanation = "Auto passes no override and uses the CLI's normal default. Discovery does not imply trust. Only currently certified models and reasoning levels can review repositories.";
     public static string DisplayName(string id) => Verified.FirstOrDefault(m => m.Id == id)?.Name ?? id;
     public static string EffortName(string value) => value switch { "xhigh" => "Extra high", "max" => "Max", null or "" => "Unavailable", _ => char.ToUpperInvariant(value[0]) + value[1..] };
     public static IReadOnlyList<string> Efforts(string? model) => Verified.FirstOrDefault(m => m.Id == model)?.Efforts ?? ["auto"];
     public static void Validate(ReviewExecutionSettings settings, string? version, IReadOnlyList<CopilotModelChoice>? available = null)
     {
         if (version != Version) throw new ReviewValidationException("Model selection requires the verified Windows Copilot CLI 1.0.91 contract.");
-        if (!Verified.Any(m => m.Id == settings.ModelId) || (available != null && !available.Any(m => m.Id == settings.ModelId)))
+        if (!(available ?? Verified).Any(m => m.Id == settings.ModelId))
             throw new ReviewValidationException("The requested model is unavailable under the verified review contract. Refresh Copilot settings and choose a current model.");
-        if (!Efforts(settings.ModelId).Contains(settings.ReasoningEffort) || (available != null && !available.Single(m => m.Id == settings.ModelId).Efforts.Contains(settings.ReasoningEffort)))
+        if (!(available ?? Verified).Single(m => m.Id == settings.ModelId).Efforts.Contains(settings.ReasoningEffort))
             throw new ReviewValidationException("The selected model does not support that reasoning level. Choose an available level or Auto.");
     }
     public static ReviewExecutionSettings Adjust(ReviewExecutionSettings requested, IReadOnlyList<CopilotModelChoice> available, out string? message)
     {
         var model = available.FirstOrDefault(m => m.Id == requested.ModelId);
         var settings = model == null ? new ReviewExecutionSettings() : requested with
-        { ReasoningEffort = model.Efforts.Contains(requested.ReasoningEffort) ? requested.ReasoningEffort : "auto" };
+        { ReasoningEffort = model.Efforts.Contains(requested.ReasoningEffort) ? requested.ReasoningEffort : model.Efforts[0] };
         message = settings == requested ? null : $"Execution settings adjusted: {DisplayName(requested.ModelId)} / {requested.ReasoningEffort} is unavailable; using {DisplayName(settings.ModelId)} / {settings.ReasoningEffort}.";
         return settings;
     }

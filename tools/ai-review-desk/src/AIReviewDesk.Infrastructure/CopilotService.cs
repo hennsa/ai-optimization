@@ -6,7 +6,7 @@ using AIReviewDesk.Core;
 
 namespace AIReviewDesk.Infrastructure;
 
-public sealed class CopilotService
+public sealed partial class CopilotService
 {
     private readonly string dataDirectory;
     private string Profile => Path.Combine(dataDirectory, "Copilot");
@@ -74,6 +74,7 @@ public sealed class CopilotService
             CopilotMetadataParser.ValidateRuntime(status.RootElement.GetProperty("result"));
             using var models = await rpc.RequestAsync("models.list", timeout.Token);
             var choices = CopilotMetadataParser.Models(models.RootElement.GetProperty("result"));
+            await new CertificationRegistry(dataDirectory).ObserveDiscoveryAsync(choices);
             CopilotQuota? quota = null;
             try
             {
@@ -140,6 +141,7 @@ public sealed class CopilotService
             DiffHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input.Context))), Status = ReviewStatus.Failed
         };
         string? run = null;
+        ModelCertificate? certificate = null; CopilotStreamValidator? validator = null;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -151,22 +153,22 @@ public sealed class CopilotService
             var account = await GetAccountAsync(cancellationToken);
             record = record with { CopilotCliVersion = account.Version ?? "" };
             if (!account.Available || !account.Supported) return record with { Status = ReviewStatus.Unsupported, Diagnostic = account.Message };
-            CopilotModelPolicy.Validate(record.RequestedExecution!, account.Version);
+
             if (!record.RequestedExecution!.IsAutoModel)
             {
                 var metadata = await GetMetadataAsync(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                CopilotModelPolicy.Validate(record.RequestedExecution, account.Version, metadata.Models);
+                certificate = new CertificationRegistry(dataDirectory).Resolve(record.RequestedExecution, metadata.Models, account.Version);
             }
             run = CreateRunDirectory();
             var configuration = CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath);
             var usageFile = Path.Combine(run, "usage.json");
-            var info = CopilotContract.StartInfo(CopilotContract.Detect()!, run, Profile, Path.Combine(run, "cache"), CopilotContract.ReviewArguments(input.Project.RepositoryPath, Path.Combine(run, "logs"), record.RequestedExecution, usageFile));
+            var info = CopilotContract.StartInfo(CopilotContract.Detect()!, run, Profile, Path.Combine(run, "cache"), CopilotContract.ReviewArguments(input.Project.RepositoryPath, Path.Combine(run, "logs"), record.RequestedExecution, usageFile, certificate));
             progress?.Report("Starting Copilot");
             // Recheck immediately before Process.Start. Same-user external writes remain a documented desktop trust assumption.
             if (CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath) != configuration) throw new InvalidOperationException("Copilot configuration changed during launch preparation.");
             CopilotGitHubCliIsolation.Inspect(CopilotContract.Detect()!, run);
-            var validator = new CopilotStreamValidator();
+            validator = new CopilotStreamValidator(certificate?.ExpectedTools, record.RequestedExecution!.IsAutoModel ? null : record.RequestedExecution.ModelId);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(3));
             progress?.Report("Reviewing");
@@ -195,7 +197,11 @@ public sealed class CopilotService
         {
             return record with { Status = ReviewStatus.Failed, Diagnostic = ex is System.ComponentModel.Win32Exception ? "Copilot could not be started." : ex.Message };
         }
-        finally { if (run != null) DeleteRunDirectory(run); }
+        finally
+        {
+            try { if (certificate != null && validator?.ContractDrift == true) await new CertificationRegistry(dataDirectory).SuspendAsync(certificate); }
+            finally { if (run != null) DeleteRunDirectory(run); }
+        }
     }
 
     private string CreateRunDirectory()

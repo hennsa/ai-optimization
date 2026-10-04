@@ -6,7 +6,13 @@ namespace AIReviewDesk.Infrastructure;
 /// <summary>Validates completed evidence, never a pre-launch authority gate.</summary>
 public sealed class CopilotStreamValidator
 {
-    private readonly HashSet<string> allowed = new(CopilotContract.AllowedTools, StringComparer.Ordinal);
+    private readonly HashSet<string> allowed;
+    private readonly string? expectedModel;
+    public CopilotStreamValidator(IEnumerable<string>? expectedTools = null, string? expectedModel = null)
+    { allowed = new(expectedTools ?? CopilotContract.AllowedTools, StringComparer.Ordinal); this.expectedModel = expectedModel; }
+    public string[]? ObservedTools { get; private set; }
+    public bool ContractDrift { get; private set; }
+    public string? Invalid => invalid;
     private readonly HashSet<string> disabledMcps = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> toolCalls = new(StringComparer.Ordinal);
     private readonly HashSet<string> runningTools = new(StringComparer.Ordinal);
@@ -32,6 +38,7 @@ public sealed class CopilotStreamValidator
             {
                 // tools_updated may contain only model; the actual manifest is observed later in usage_checkpoint.
                 Model = Text(data, "model") ?? Model;
+                if (expectedModel != null && Model != null && Model != expectedModel) throw new InvalidOperationException("Requested and observed models differ.");
                 ValidateManifests(data);
             }
             if (type == "session.mcp_servers_loaded")
@@ -90,6 +97,7 @@ public sealed class CopilotStreamValidator
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
+            ContractDrift = true;
             invalid = ex is JsonException ? "Copilot emitted malformed JSONL." : ex.Message;
         }
     }
@@ -104,11 +112,16 @@ public sealed class CopilotStreamValidator
         if (cancelled) throw new OperationCanceledException("The review was cancelled; partial findings are not valid.");
         if (exitCode != 0) throw new InvalidOperationException("Copilot did not complete successfully.");
         if (invalid != null) throw new InvalidOperationException(invalid);
-        if (!terminalSeen) throw new InvalidOperationException("Copilot returned no terminal result.");
-        if (runningTools.Count != 0) throw new InvalidOperationException("Copilot returned incomplete tool execution evidence.");
-        if (!manifestSeen) throw new InvalidOperationException("The completed run has no usable tool manifest.");
-        if (!disabledMcps.SetEquals(["github-mcp-server", "githubiq"])) throw new InvalidOperationException("Disabled built-in MCP evidence is missing.");
-        return ParseResult(response ?? throw new InvalidOperationException("Copilot returned no structured findings."));
+        try
+        {
+            if (!terminalSeen) throw new InvalidOperationException("Copilot returned no terminal result.");
+            if (runningTools.Count != 0) throw new InvalidOperationException("Copilot returned incomplete tool execution evidence.");
+            if (!manifestSeen) throw new InvalidOperationException("The completed run has no usable tool manifest.");
+            if (!disabledMcps.SetEquals(["github-mcp-server", "githubiq"])) throw new InvalidOperationException("Disabled built-in MCP evidence is missing.");
+            if (expectedModel != null && Model == null) throw new InvalidOperationException("Requested model has no observed runtime model evidence.");
+            return ParseResult(response ?? throw new InvalidOperationException("Copilot returned no structured findings."));
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException) { ContractDrift = true; throw; }
     }
 
     private void ValidateManifests(JsonElement data)
@@ -120,6 +133,7 @@ public sealed class CopilotStreamValidator
                 {
                     if (property.Value.ValueKind != JsonValueKind.Array) throw new InvalidOperationException("Malformed tool manifest.");
                     var names = property.Value.EnumerateArray().Select(t => Text(t, "name") ?? throw new InvalidOperationException("Malformed tool manifest entry.")).ToArray();
+                    ObservedTools = names;
                     if (names.Length != allowed.Count || !allowed.SetEquals(names)) throw new InvalidOperationException("Copilot tool manifest does not match the exact verified read-only tool set.");
                     manifestSeen = true;
                 }

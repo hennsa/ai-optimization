@@ -1,0 +1,104 @@
+{
+  "Models": [
+    {
+      "SchemaVersion": 1,
+      "CliVersion": "1.0.91",
+      "ModelId": "claude-sonnet-5",
+      "DisplayName": "Claude Sonnet 5",
+      "SuiteVersion": "1",
+      "AuthorityContract": "read-only-1",
+      "TestedAt": "2026-10-03T00:00:00Z",
+      "ReasoningEfforts": [
+        "auto",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "ExpectedTools": [
+        "view",
+        "grep",
+        "glob"
+      ],
+      "TechnicalTools": [
+        "view",
+        "grep",
+        "glob"
+      ],
+      "OutputContract": "strict-jsonl-findings-1",
+      "Probes": [
+        {
+          "Name": "accepted legacy read-only contract",
+          "Passed": true
+        }
+      ],
+      "Status": "Certified",
+      "Source": "bundled certification",
+      "EvidenceNote": "Migrated accepted 1.0.91 baseline from integration verification through 2026-10-03; existing effort catalogue retained, not a fresh per-effort suite. Sonnet 5 explicit High previously returned fenced JSON and remained subject to strict runtime rejection."
+    },
+    {
+      "SchemaVersion": 1,
+      "CliVersion": "1.0.91",
+      "ModelId": "claude-sonnet-5.5",
+      "DisplayName": "Claude Sonnet 5.5",
+      "SuiteVersion": "1",
+      "AuthorityContract": "read-only-1",
+      "TestedAt": "2026-10-03T00:00:00Z",
+      "ReasoningEfforts": [
+        "auto",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "ExpectedTools": [
+        "view",
+        "grep",
+        "glob"
+      ],
+      "TechnicalTools": [
+        "view",
+        "grep",
+        "glob"
+      ],
+      "OutputContract": "strict-jsonl-findings-1",
+      "Probes": [
+        {
+          "Name": "accepted legacy read-only contract",
+          "Passed": true
+        }
+      ],
+      "Status": "Certified",
+      "Source": "bundled certification",
+      "EvidenceNote": "Migrated accepted 1.0.91 baseline from integration verification through 2026-10-03; real High/Low runs passed. Existing effort catalogue retained, not a fresh per-effort suite."
+    }
+  ],
+  "Tools": [
+    {
+      "CliVersion": "1.0.91",
+      "ToolName": "view",
+      "CapabilityContract": "repository-read-search-1",
+      "Evidence": "Accepted CLI 1.0.91 security contract; see phase2 and integration verification. Bundled baseline preserves established evidence, not a new per-effort proof."
+    },
+    {
+      "CliVersion": "1.0.91",
+      "ToolName": "grep",
+      "CapabilityContract": "repository-read-search-1",
+      "Evidence": "Accepted CLI 1.0.91 security contract; see phase2 and integration verification. Bundled baseline preserves established evidence, not a new per-effort proof."
+    },
+    {
+      "CliVersion": "1.0.91",
+      "ToolName": "glob",
+      "CapabilityContract": "repository-read-search-1",
+      "Evidence": "Accepted CLI 1.0.91 security contract; see phase2 and integration verification. Bundled baseline preserves established evidence, not a new per-effort proof."
+    },
+    {
+      "CliVersion": "1.0.91",
+      "ToolName": "rg",
+      "CapabilityContract": "repository-read-search-1",
+      "Evidence": "Native dispatcher and restricted path manager probes: absolute/traversal/sibling/temp/junction denied; recursive/glob escape absent; search-only structured arguments; fixed bundled ripgrep. See integration verification 2026-10-04."
+    }
+  ]
+}

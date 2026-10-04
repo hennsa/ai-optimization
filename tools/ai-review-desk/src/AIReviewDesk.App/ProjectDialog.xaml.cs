@@ -57,7 +57,7 @@ public partial class ProjectDialog : FluentWindow
     {
         var efforts = models.FirstOrDefault(m => m.Id == ModelInput.SelectedValue as string)?.Efforts ?? ["auto"];
         EffortInput.ItemsSource = efforts.Select(e => new EffortChoice(e, CopilotModelPolicy.EffortName(e))).ToArray();
-        EffortInput.SelectedValue = efforts.Contains(previous) ? previous : "auto";
-        ExecutionNote.Text = efforts.Count == 1 ? "This selection exposes no reasoning override; Auto is required." : CopilotModelPolicy.AutoExplanation;
+        EffortInput.SelectedValue = efforts.Contains(previous) ? previous : efforts[0];
+        ExecutionNote.Text = efforts.Count == 1 ? "Only this model’s certified reasoning level is available." : CopilotModelPolicy.AutoExplanation;
     }
 }

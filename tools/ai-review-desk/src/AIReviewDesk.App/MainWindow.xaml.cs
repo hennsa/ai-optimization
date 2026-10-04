@@ -13,6 +13,7 @@ public partial class MainWindow : FluentWindow
 {
     public DeskViewModel ViewModel { get; }
     private bool initialized;
+    private bool closeAfterCompatibility;
 
     public MainWindow(string? dataDirectory = null)
     {
@@ -22,7 +23,19 @@ public partial class MainWindow : FluentWindow
         ViewModel.PropertyChanged += (_, change) =>
         {
             if (change.PropertyName is nameof(DeskViewModel.Area) or nameof(DeskViewModel.ShowNewReview) or nameof(DeskViewModel.ShowReviewDetail)) MainContentScroll.ScrollToTop();
+            if (closeAfterCompatibility && change.PropertyName == nameof(DeskViewModel.IsCompatibilityTesting) && !ViewModel.IsCompatibilityTesting)
+                Dispatcher.BeginInvoke(new Action(Close));
         };
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (ViewModel.IsCompatibilityTesting)
+        {
+            e.Cancel = true; closeAfterCompatibility = true;
+            ViewModel.CancelCompatibility(); // Await process-tree termination and fixture cleanup before closing.
+        }
+        base.OnClosing(e);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -140,6 +153,15 @@ public partial class MainWindow : FluentWindow
     private IReadOnlyList<string> SelectedPaths() => ChangedPaths.SelectedItems.Cast<ReviewPathChoice>().Select(path => path.Path).ToArray();
 
     private async void OnRefreshAccount(object sender, RoutedEventArgs e) => await ViewModel.RefreshAccountAsync();
+    private async void OnTestCompatibility(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.IsCompatibilityTesting || sender is not FrameworkElement { Tag: ModelCompatibility model }) return;
+        if (System.Windows.MessageBox.Show(this,
+            $"Test {model.Model.Name} in a disposable AI Review Desk fixture?\n\nThis makes small Copilot model calls and can consume account allowance. Exact cost is not known beforehand. Your project defaults will stay as they are.",
+            model.TestLabel, System.Windows.MessageBoxButton.OKCancel, MessageBoxImage.Information, System.Windows.MessageBoxResult.Cancel) == System.Windows.MessageBoxResult.OK)
+            await ViewModel.TestCompatibilityAsync(model);
+    }
+    private void OnCancelCompatibility(object sender, RoutedEventArgs e) => ViewModel.CancelCompatibility();
     private async void OnSignIn(object sender, RoutedEventArgs e) => await ViewModel.SignInAsync();
     private async void OnSignOut(object sender, RoutedEventArgs e) => await ViewModel.SignOutAsync();
     private async void OnSwitchAccount(object sender, RoutedEventArgs e) => await ViewModel.SwitchAccountAsync();

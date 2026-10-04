@@ -92,6 +92,7 @@ public static class CopilotPreflight
 
     public static void AssertNoReparseAncestors(string path)
     {
+        if (File.Exists(path)) AssertNoReparse(path);
         for (var current = new DirectoryInfo(Path.GetFullPath(path)); current != null; current = current.Parent)
             if (current.Exists) AssertNoReparse(current.FullName);
     }

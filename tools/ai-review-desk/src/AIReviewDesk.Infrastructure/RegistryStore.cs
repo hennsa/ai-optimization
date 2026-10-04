@@ -205,11 +205,20 @@ public sealed class RegistryStore
     private static ReviewExecutionSettings NormalizeExecution(ReviewExecutionSettings? execution, bool saving, List<string> corrections)
     {
         execution ??= CopilotModelPolicy.Default;
-        try { CopilotModelPolicy.Validate(execution, CopilotModelPolicy.Version); return execution; }
+        try
+        {
+            // Preferences retain model IDs even if availability/certification later changes.
+            // Saving preferences confers no execution authority; selectors and runner resolve certificates.
+            static bool ValidId(string? value, int limit) => value is { Length: > 0 } && value.Length <= limit &&
+                !value.StartsWith('-') && !value.Any(c => char.IsControl(c) || char.IsWhiteSpace(c));
+            if (!ValidId(execution.ModelId, 128) || !ValidId(execution.ReasoningEffort, 32) ||
+                execution.IsAutoModel && execution.ReasoningEffort != "auto") throw new ReviewValidationException("Invalid project model/reasoning preference.");
+            return execution;
+        }
         catch (ReviewValidationException)
         {
             if (saving) throw;
-            corrections.Add("Unavailable project model/reasoning defaults were reset to the verified application defaults.");
+            corrections.Add("Malformed project model/reasoning defaults were reset to the application defaults.");
             return CopilotModelPolicy.Default;
         }
     }
