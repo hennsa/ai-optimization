@@ -55,7 +55,7 @@ public sealed class LargeContextCapabilityTests
             vm.SetMetadata(new([model], null, "synthetic", CliVersion: "1.0.91"));
             vm.SelectedModelId = model.Id;
             var launches = 0;
-            vm.ReviewRunner = (input, _, _, _, _) =>
+            vm.ReviewRunner = (input, _, _, _, _, _) =>
             {
                 launches++;
                 return Task.FromResult(new ReviewRecord { ProjectId = input.Project.Id, Status = ReviewStatus.Completed });

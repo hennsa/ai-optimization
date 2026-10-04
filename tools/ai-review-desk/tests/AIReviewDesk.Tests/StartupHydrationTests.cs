@@ -87,6 +87,58 @@ public sealed class StartupHydrationTests
     }
 
     [Fact]
+    public async Task Sign_in_during_startup_metadata_hydration_reloads_metadata_for_the_signed_in_account()
+    {
+        using var directory = new TemporaryDirectory();
+        var startupAccount = NewSource<CopilotAccountState>();
+        var startupMetadata = NewSource<CopilotMetadata>();
+        var startupStarted = NewSource<bool>();
+        var startupMetadataStarted = NewSource<bool>();
+        var startupFinished = NewSource<bool>();
+        var accountCalls = 0;
+        var metadataCalls = 0;
+        var vm = new DeskViewModel(directory.Path);
+        vm.AccountStatusLoader = () => Interlocked.Increment(ref accountCalls) == 1
+            ? startupAccount.Task
+            : Task.FromResult(new CopilotAccountState(true, true, false, "new identity", "1.0.91", "ok", SavedAccountConfigured: true));
+        var newQuota = new CopilotQuota("AI credits", 500, 125, 75, false, DateTimeOffset.UtcNow);
+        vm.AccountMetadataLoader = () => Interlocked.Increment(ref metadataCalls) == 1
+            ? Start(startupMetadataStarted, startupMetadata)
+            : Task.FromResult(new CopilotMetadata(CopilotModelPolicy.Verified, newQuota, "new account metadata"));
+        vm.SignInOperation = () => Task.CompletedTask;
+        var originalStartupRefresh = vm.StartupAccountRefresher;
+        vm.StartupAccountRefresher = async () =>
+        {
+            startupStarted.TrySetResult(true);
+            await originalStartupRefresh();
+            startupFinished.TrySetResult(true);
+        };
+
+        await vm.InitializeAsync(new RegistryLoadResult(new AppState(), null));
+        await startupStarted.Task;
+        startupAccount.SetResult(new CopilotAccountState(true, true, false, null, "1.0.91", "startup account"));
+        await startupMetadataStarted.Task;
+
+        await vm.SignInAsync();
+        Assert.Equal("Sign-in completed", vm.AccountStatus);
+        Assert.Equal("Copilot · 375 / 500 AI credits remaining", vm.CopilotAllowanceCompact);
+        Assert.False(vm.CopilotAllowanceCompact.Contains("Checking", StringComparison.Ordinal));
+
+        startupMetadata.SetResult(new CopilotMetadata(CopilotModelPolicy.Verified,
+            new CopilotQuota("AI credits", 500, 499, 0.2m, false, DateTimeOffset.UtcNow), "stale startup metadata"));
+        await startupFinished.Task;
+
+        Assert.Equal("Copilot · 375 / 500 AI credits remaining", vm.CopilotAllowanceCompact);
+        Assert.Equal("Sign-in completed", vm.AccountStatus);
+
+        static Task<CopilotMetadata> Start(TaskCompletionSource<bool> started, TaskCompletionSource<CopilotMetadata> result)
+        {
+            started.TrySetResult(true);
+            return result.Task;
+        }
+    }
+
+    [Fact]
     public async Task Failed_repository_and_unavailable_metadata_keep_truthful_retry_explanations()
     {
         using var directory = new TemporaryDirectory();
@@ -157,7 +209,7 @@ public sealed class StartupHydrationTests
         await vm.InitializeAsync(new RegistryLoadResult(
             new AppState { Projects = [project], SelectedProjectId = project.Id, RefreshOnActivate = true }, null));
         await WaitForHydrationAsync(vm);
-        vm.ReviewRunner = async (input, _, _, _, _) =>
+        vm.ReviewRunner = async (input, _, _, _, _, _) =>
         {
             runnerStarted.TrySetResult(true);
             await reviewGate.Task;

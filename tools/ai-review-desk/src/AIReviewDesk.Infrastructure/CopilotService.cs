@@ -123,7 +123,7 @@ public sealed partial class CopilotService
     public Task SignOutAsync(CancellationToken cancellationToken = default) =>
         Task.FromException(new InvalidOperationException("CLI 1.0.91 has no supported noninteractive sign-out command. AI Review Desk does not automate interactive account commands. No credentials were changed."));
 
-    public async Task<ReviewRecord> RunAsync(ReviewInput input, IEnumerable<string> profileIds, IProgress<string>? progress = null, CancellationToken cancellationToken = default, ReviewExecutionSettings? execution = null)
+    public async Task<ReviewRecord> RunAsync(ReviewInput input, IEnumerable<string> profileIds, IProgress<string>? progress = null, CancellationToken cancellationToken = default, ReviewExecutionSettings? execution = null, Action? onModelStarted = null)
     {
         if (!input.HasReviewableChanges) throw new ReviewValidationException("The selected scope has no changes to review. Preview remains available.");
         if (input.IsPreview) throw new ReviewValidationException("Preview cannot authorize execution. Prepare the repository afresh before starting.");
@@ -184,7 +184,7 @@ public sealed partial class CopilotService
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(3));
             progress?.Report("Reviewing");
-            var process = await CopilotProcess.RunFramesAsync(info, prompt, validator.AcceptFrame, timeout.Token);
+            var process = await CopilotProcess.RunFramesAsync(info, prompt, validator.AcceptFrame, timeout.Token, onModelStarted);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report("Validating result");
             var after = await integrity.FingerprintAsync(input.Project.RepositoryPath, cancellationToken);

@@ -179,8 +179,8 @@ public partial class MainWindow : FluentWindow
             var effort = model.Model.Efforts.Contains("high") ? "high" : model.Model.Efforts.First();
             var operation = new OperationProgress("Model compatibility", model.Model.Name, $"Reasoning: {CopilotModelPolicy.EffortName(effort)}\nDisposable certification fixture", ViewModel.CancelCompatibility);
             new OperationProgressWindow(operation, () => ViewModel.TestCompatibilityAsync(model, operation)) { Owner = this }.ShowDialog();
-            // Refresh current Settings only after the final modal result was read/closed.
-            await ViewModel.RefreshAccountAsync();
+            // Refresh Settings and the title-bar allowance only after the final modal result was read/closed.
+            await ViewModel.RefreshCompatibilityMetadataAsync();
         }
     }
     private async void OnTestLargeCompatibility(object sender, RoutedEventArgs e)
@@ -193,7 +193,7 @@ public partial class MainWindow : FluentWindow
         var operation = new OperationProgress("Large-context compatibility", model.Model.Name,
             $"Reasoning: {CopilotModelPolicy.EffortName(effort)}\nSynthetic prompt: Large v2 ceiling — {ReviewContextCapability.MaximumPromptCharacterBound:N0} composed characters\nAllowance impact may be materially higher than normal testing", ViewModel.CancelCompatibility);
         new OperationProgressWindow(operation, () => ViewModel.TestLargeContextCompatibilityAsync(model, operation)) { Owner = this }.ShowDialog();
-        await ViewModel.RefreshAccountAsync();
+        await ViewModel.RefreshCompatibilityMetadataAsync();
     }
     private void OnCancelCompatibility(object sender, RoutedEventArgs e) => ViewModel.CancelCompatibility();
     private async void OnSignIn(object sender, RoutedEventArgs e) => await ViewModel.SignInAsync();

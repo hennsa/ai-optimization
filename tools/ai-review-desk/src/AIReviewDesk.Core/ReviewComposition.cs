@@ -108,11 +108,21 @@ public static class HandoffFormatter
 {
     public static string FormatResult(ReviewRecord record) => Format(record, null);
 
-    public static string FormatForChatGPT(ReviewRecord record) => Format(record,
-        "Assess each independent review finding against the implementation context and classify it as valid, likely false positive, or requiring repository verification. Explain the evidence for each classification. Do not assume the reviewer is correct.");
+    public static string FormatForChatGPT(ReviewRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        return Format(record, record.Result.Findings.Count == 0
+            ? "Independently assess whether this no-findings result is reasonable for the supplied change. Verify the change against the relevant implementation context, identify anything the reviewer may have missed, and state whether further repository verification is warranted. Do not treat no findings as proof that the change is correct."
+            : "Assess each independent review finding against the implementation context and classify it as valid, likely false positive, or requiring repository verification. Explain the evidence for each classification. Do not assume the reviewer is correct.");
+    }
 
-    public static string FormatForCodex(ReviewRecord record) => Format(record,
-        "Independently verify each Copilot finding against the current repository and actual change. Report each finding as confirmed, rejected, or unresolved with evidence. Do not implement a finding merely because Copilot reported it. Do not modify anything unless the current task explicitly authorizes implementation.");
+    public static string FormatForCodex(ReviewRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        return Format(record, record.Result.Findings.Count == 0
+            ? "Independently inspect the current repository change and assess whether the Copilot no-findings result is reasonable. Look for defects the reviewer may have missed and report whether the change appears sound or requires further investigation. Do not treat no findings as proof of correctness. Do not modify anything unless the current task explicitly authorizes implementation."
+            : "Independently verify each Copilot finding against the current repository and actual change. Report each finding as confirmed, rejected, or unresolved with evidence. Do not implement a finding merely because Copilot reported it. Do not modify anything unless the current task explicitly authorizes implementation.");
+    }
 
     private static string Format(ReviewRecord record, string? followUp)
     {

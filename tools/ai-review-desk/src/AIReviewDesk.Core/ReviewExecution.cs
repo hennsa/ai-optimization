@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace AIReviewDesk.Core;
@@ -128,5 +129,35 @@ public sealed record ReviewUsage(IReadOnlyList<ModelTokenUsage> Models, decimal?
 
 public sealed record CopilotQuota(string Unit, decimal Entitlement, decimal Used, decimal RemainingPercentage, bool Unlimited, DateTimeOffset FetchedAt)
 {
+    public string CompactDisplay
+    {
+        get
+        {
+            if (Unlimited) return "Copilot · Unlimited";
+            if (Entitlement <= 0 || Used < 0 || Used > Entitlement) return $"Copilot · {RemainingPercentage:0.#}% left";
+            var remaining = Math.Max(Entitlement - Used, 0m);
+            var unit = Unit == "Premium requests" ? "requests" : Unit;
+            return $"Copilot · {FormatAmount(remaining)} / {FormatAmount(Entitlement)} {unit} remaining";
+        }
+    }
+
+    public string TooltipDisplay => Unlimited
+        ? $"Unlimited {Unit} allowance\nChecked {FetchedAt.LocalDateTime:t}"
+        : $"Used {FormatAmount(Used)} of {FormatAmount(Entitlement)} {Unit}\n{RemainingPercentage:0.#}% remaining\nChecked {FetchedAt.LocalDateTime:t}";
+
+    private static string FormatAmount(decimal amount)
+    {
+        var formatted = amount.ToString("N3", CultureInfo.CurrentCulture);
+        var decimalSeparator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+        var decimalIndex = formatted.LastIndexOf(decimalSeparator, StringComparison.Ordinal);
+        if (decimalIndex >= 0)
+        {
+            formatted = formatted.TrimEnd('0');
+            if (formatted.EndsWith(decimalSeparator, StringComparison.Ordinal))
+                formatted = formatted[..^decimalSeparator.Length];
+        }
+        return formatted;
+    }
+
     public string Display => $"{Unit} · {(Unlimited ? "Unlimited allowance" : $"{RemainingPercentage:0.#}% remaining · {Used:0.###} of {Entitlement:0.###} used")}\nChecked {FetchedAt.LocalDateTime:g}. Reset date unavailable in CLI 1.0.91. Account allowance is separate from per-review usage.";
 }

@@ -16,7 +16,6 @@ public sealed class DeskViewModel : ObservableObject
     private readonly ReviewHistoryStore history;
     private readonly Func<ProjectRegistration, Task<RepositorySnapshot>> inspectProject;
     private readonly Func<Guid, Task<IReadOnlyList<ReviewRecord>>> loadProjectHistory;
-    private readonly Func<Task> refreshAccount;
     private AppState state = new();
     private ProjectRegistration? selected;
     private RepositorySnapshot? snapshot;
@@ -29,6 +28,7 @@ public sealed class DeskViewModel : ObservableObject
     private int historyGeneration;
     private int selectionIntentGeneration;
     private int accountHydrationGeneration;
+    private readonly object accountHydrationSync = new();
     private readonly SemaphoreSlim selectionPersistLock = new(1, 1);
     private bool isSelectedPaths;
     private ReviewScope scope = ReviewScope.WorkingChanges;
@@ -63,15 +63,26 @@ public sealed class DeskViewModel : ObservableObject
         git = new GitInspector();
         inspectProject = projectInspector ?? (project => git.InspectAsync(project.RepositoryPath, project.DefaultBase));
         loadProjectHistory = historyLoader ?? (projectId => history.LoadAsync(projectId));
-        refreshAccount = accountRefresher ?? RefreshStartupCopilotAccountAsync;
+        StartupAccountRefresher = accountRefresher ?? RefreshStartupCopilotAccountAsync;
         ReviewRunner = copilot.RunAsync;
         CertificationRunner = copilot.TestCompatibilityAsync;
         LargeCertificationRunner = copilot.TestLargeContextCompatibilityAsync;
+        AccountStatusLoader = () => copilot.GetAccountAsync();
+        AccountMetadataLoader = () => copilot.GetMetadataAsync();
+        SignInOperation = () => copilot.SignInAsync();
+        SignOutOperation = () => copilot.SignOutAsync();
+        MetadataRefresher = RefreshAccountAsync;
     }
 
-    internal Func<ReviewInput, IEnumerable<string>, IProgress<string>?, CancellationToken, ReviewExecutionSettings?, Task<ReviewRecord>> ReviewRunner { get; set; }
+    internal Func<ReviewInput, IEnumerable<string>, IProgress<string>?, CancellationToken, ReviewExecutionSettings?, Action?, Task<ReviewRecord>> ReviewRunner { get; set; }
     internal Func<string, string, IProgress<string>?, CancellationToken, Task<ModelCertificate>> CertificationRunner { get; set; }
     internal Func<string, string, IProgress<string>?, CancellationToken, Task<ModelCertificate>> LargeCertificationRunner { get; set; }
+    internal Func<Task<CopilotAccountState>> AccountStatusLoader { get; set; }
+    internal Func<Task<CopilotMetadata>> AccountMetadataLoader { get; set; }
+    internal Func<Task> StartupAccountRefresher { get; set; }
+    internal Func<Task> SignInOperation { get; set; }
+    internal Func<Task> SignOutOperation { get; set; }
+    internal Func<Task> MetadataRefresher { get; set; }
     internal Func<PromptPreviewRequest, IProgress<string>?, CancellationToken, Task<PreparedPromptPreview>> PreviewPreparer { get; set; } = new PromptPreviewService().PrepareAsync;
 
     public ObservableCollection<ProjectRegistration> Projects { get; } = [];
@@ -104,6 +115,8 @@ public sealed class DeskViewModel : ObservableObject
     public string AutoExplanation => CopilotModelPolicy.AutoExplanation;
     public string ExecutionNotice { get => executionNotice; private set => SetProperty(ref executionNotice, value); }
     public string ReasoningHint => execution.IsAutoModel ? "Choose an explicit model to override reasoning. Auto leaves both settings to the CLI." : EffortChoices.Count == 1 ? "Only this model’s certified reasoning level is available." : "Only this model's verified reasoning levels are shown. Auto passes no effort override.";
+    public string CopilotAllowanceCompact => metadataLoading ? "Copilot · Checking…" : metadata.Quota?.CompactDisplay ?? "Copilot · Usage unavailable";
+    public string CopilotAllowanceTooltip => metadataLoading ? "Checking current Copilot account allowance…" : metadata.Quota?.TooltipDisplay ?? "Copilot usage unavailable. Refresh status to try again.";
     public string CopilotUsage => metadataLoading ? "Loading account allowance and model metadata…" : metadata.UsageDisplay;
     public string ModelMetadataStatus => metadataLoading ? "Loading live model metadata…" : metadata.ModelsAvailable ? "Live model metadata loaded." : "Live model metadata is unavailable. Refresh status to try again.";
     public string PromptSizeDisplay => preparedPromptSize == null ? "Prepare a prompt to see its size." : $"Composed prompt: {preparedPromptSize.CharacterCount:N0} characters · {preparedPromptSize.Utf8ByteCount:N0} UTF-8 bytes · {preparedPromptSize.ContextClass switch { ReviewContextClass.Normal => "Normal context", ReviewContextClass.Large => "Large context", _ => "Unsupported size — reduce scope" }} (characters are not tokens)." +
@@ -128,7 +141,7 @@ public sealed class DeskViewModel : ObservableObject
         CompatibilityModels.Clear();
         foreach (var row in registry.Discover(value.Models, value.CliVersion)) CompatibilityModels.Add(value.ModelsAvailable ? row :
             row with { Status = CertificationStatus.NeedsRetest, Reason = "Live model availability is unavailable. Refresh before testing or selecting an explicit model." });
-        OnPropertyChanged(nameof(Models)); OnPropertyChanged(nameof(CopilotUsage)); OnPropertyChanged(nameof(ModelMetadataStatus));
+        OnPropertyChanged(nameof(Models)); OnPropertyChanged(nameof(CopilotUsage)); OnPropertyChanged(nameof(CopilotAllowanceCompact)); OnPropertyChanged(nameof(CopilotAllowanceTooltip)); OnPropertyChanged(nameof(ModelMetadataStatus));
         ApplyExecution(CopilotModelPolicy.Adjust(requested, models, out var adjustment));
         ExecutionNotice = adjustment ?? "";
     }
@@ -170,7 +183,6 @@ public sealed class DeskViewModel : ObservableObject
             CompatibilityResult = $"{result.DisplayName} — {(large?.Status == CertificationStatus.Certified ? "Large-context certified" : "Large-context not certified")}\n" +
                 (large?.FailureReason ?? $"Prompt: {large?.TestedPromptCharacters:N0} characters / {large?.TestedPromptUtf8Bytes:N0} UTF-8 bytes. No prompt or source content was retained.");
             operation?.Complete(large?.Status == CertificationStatus.Certified ? "Certified" : "Rejected", CompatibilityResult);
-            SetMetadata(metadata);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Error = "Large-context compatibility testing could not complete safely."; operation?.Complete("Failed", Error); }
         finally { compatibilityCancellation.Dispose(); compatibilityCancellation = null; OnPropertyChanged(nameof(IsCompatibilityTesting)); }
@@ -418,17 +430,17 @@ public sealed class DeskViewModel : ObservableObject
         var timer = Stopwatch.StartNew();
         try
         {
-            await refreshAccount();
+            await StartupAccountRefresher();
             StartupDiagnostics.Measure("account and metadata hydration complete", timer);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            if (generation == Volatile.Read(ref accountHydrationGeneration))
+            RunIfAccountHydrationCurrent(generation, () =>
             {
                 AccountStatus = "Copilot status unavailable";
                 AccountDetail = "Copilot account metadata could not be loaded. Refresh to try again.";
                 SetMetadataLoading(false);
-            }
+            });
             StartupDiagnostics.Measure("account and metadata hydration unavailable", timer);
         }
     }
@@ -443,13 +455,13 @@ public sealed class DeskViewModel : ObservableObject
     {
         var generation = Volatile.Read(ref accountHydrationGeneration);
         var accountTimer = Stopwatch.StartNew();
-        var account = await Task.Run(() => copilot.GetAccountAsync());
-        if (generation == Volatile.Read(ref accountHydrationGeneration)) SetAccount(account);
+        var account = await AccountStatusLoader();
+        if (!SetAccountIfCurrent(generation, account)) return;
         StartupDiagnostics.Measure("account status loaded", accountTimer);
 
         var metadataTimer = Stopwatch.StartNew();
-        var result = await Task.Run(() => copilot.GetMetadataAsync());
-        if (generation == Volatile.Read(ref accountHydrationGeneration)) SetMetadata(result);
+        var result = await AccountMetadataLoader();
+        SetMetadataIfCurrent(generation, result);
         StartupDiagnostics.Measure("model metadata loaded", metadataTimer);
     }
 
@@ -605,6 +617,7 @@ public sealed class DeskViewModel : ObservableObject
         OnPropertyChanged(nameof(Interactive));
         var cancellationToken = reviewCancellation.Token;
         var selectedExecution = execution;
+        var modelLaunched = false;
         try
         {
             var profileIds = SelectedProfileIds();
@@ -637,7 +650,7 @@ public sealed class DeskViewModel : ObservableObject
                     throw new ReviewValidationException($"This review has a large context. {live?.Name ?? selectedExecution.ModelId} has not been certified for the Large v2 tier. {reason} Test large-context compatibility, use Selected Paths to reduce scope, or choose another model with a valid Large v2 certificate.");
             }
             var progress = new Progress<string>(Report);
-            var record = await ReviewRunner(input, profileIds, progress, cancellationToken, selectedExecution);
+            var record = await ReviewRunner(input, profileIds, progress, cancellationToken, selectedExecution, () => modelLaunched = true);
             record = record with { PromptSize = promptSize };
             SetMetadata(metadata); // Surface locally persisted runtime suspension without another model call.
             ShowHistoryRecord(record);
@@ -678,6 +691,7 @@ public sealed class DeskViewModel : ObservableObject
             OnPropertyChanged(nameof(Interactive));
             operation?.Complete(HasError ? "Failed" : LatestReview?.Status.ToString() ?? "Failed", HasError ? Error : LatestReview?.Diagnostic ?? ReviewProgress, LatestReview != null);
         }
+        if (modelLaunched) await RefreshMetadataSafelyAsync();
         void Report(string message) { ReviewProgress = message; operation?.Report(message); }
     }
 
@@ -810,52 +824,112 @@ public sealed class DeskViewModel : ObservableObject
 
     public async Task RefreshAccountAsync()
     {
-        var generation = Interlocked.Increment(ref accountHydrationGeneration);
-        SetMetadataLoading(true);
+        var generation = BeginAccountHydration();
         try
         {
-            var account = await copilot.GetAccountAsync();
-            var result = await copilot.GetMetadataAsync();
-            if (generation == Volatile.Read(ref accountHydrationGeneration))
-            {
-                SetAccount(account);
-                SetMetadata(result);
-            }
+            var account = await AccountStatusLoader();
+            if (!SetAccountIfCurrent(generation, account)) return;
+            await RefreshMetadataForGenerationAsync(generation);
         }
-        finally { if (generation == Volatile.Read(ref accountHydrationGeneration)) SetMetadataLoading(false); }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            SetMetadataIfCurrent(generation, CopilotMetadata.Unavailable);
+        }
+        finally { SetMetadataLoadingIfCurrent(generation, false); }
     }
+    private async Task RefreshMetadataSafelyAsync()
+    {
+        try { await MetadataRefresher(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { SetMetadata(CopilotMetadata.Unavailable); }
+    }
+    public Task RefreshCompatibilityMetadataAsync() => RefreshMetadataSafelyAsync();
     private void SetMetadataLoading(bool value)
     {
-        if (SetProperty(ref metadataLoading, value)) { OnPropertyChanged(nameof(CopilotUsage)); OnPropertyChanged(nameof(ModelMetadataStatus)); }
+        if (SetProperty(ref metadataLoading, value)) { OnPropertyChanged(nameof(CopilotUsage)); OnPropertyChanged(nameof(CopilotAllowanceCompact)); OnPropertyChanged(nameof(CopilotAllowanceTooltip)); OnPropertyChanged(nameof(ModelMetadataStatus)); }
     }
     public async Task SignInAsync()
     {
-        var generation = Interlocked.Increment(ref accountHydrationGeneration);
+        var generation = InvalidateAccountHydration();
+        SetMetadataIfCurrent(generation, CopilotMetadata.Unavailable);
         try
         {
-            await copilot.SignInAsync();
-            var account = (await copilot.GetAccountAsync()) with { SignInCompleted = true };
-            if (generation == Volatile.Read(ref accountHydrationGeneration)) SetAccount(account);
+            await SignInOperation();
+            if (generation != Volatile.Read(ref accountHydrationGeneration)) return;
+            var account = (await AccountStatusLoader()) with { SignInCompleted = true };
+            if (!SetAccountIfCurrent(generation, account)) return;
+            await RefreshMetadataForGenerationAsync(generation);
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            RunIfAccountHydrationCurrent(generation, () =>
+            {
+                SetMetadata(CopilotMetadata.Unavailable);
+                Error = ex.Message;
+            });
+        }
     }
     public async Task SignOutAsync()
     {
-        Interlocked.Increment(ref accountHydrationGeneration);
-        try { await copilot.SignOutAsync(); }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
-        await RefreshAccountAsync();
+        var generation = InvalidateAccountHydration();
+        try { await SignOutOperation(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            RunIfAccountHydrationCurrent(generation, () => Error = ex.Message);
+            return;
+        }
+        if (generation != Volatile.Read(ref accountHydrationGeneration)) return;
+        if (!SetMetadataIfCurrent(generation, CopilotMetadata.Unavailable)) return;
+        try
+        {
+            var account = await AccountStatusLoader();
+            SetAccountIfCurrent(generation, account);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            RunIfAccountHydrationCurrent(generation, () => Error = ex.Message);
+        }
     }
     public async Task SwitchAccountAsync()
     {
-        Interlocked.Increment(ref accountHydrationGeneration);
+        var generation = InvalidateAccountHydration();
+        var signedOut = false;
         try
         {
-            await copilot.SignOutAsync();
-            await copilot.SignInAsync();
-            await RefreshAccountAsync();
+            await SignOutOperation();
+            if (generation != Volatile.Read(ref accountHydrationGeneration)) return;
+            signedOut = true;
+            if (!SetMetadataIfCurrent(generation, CopilotMetadata.Unavailable)) return;
+            var signedOutAccount = await AccountStatusLoader();
+            if (!SetAccountIfCurrent(generation, signedOutAccount)) return;
+            await SignInOperation();
+            if (generation != Volatile.Read(ref accountHydrationGeneration)) return;
+            var signedInAccount = (await AccountStatusLoader()) with { SignInCompleted = true };
+            if (!SetAccountIfCurrent(generation, signedInAccount)) return;
+            await RefreshMetadataForGenerationAsync(generation);
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            RunIfAccountHydrationCurrent(generation, () =>
+            {
+                if (signedOut) SetMetadata(CopilotMetadata.Unavailable);
+                Error = ex.Message;
+            });
+        }
+    }
+
+    private async Task RefreshMetadataForGenerationAsync(int generation)
+    {
+        if (!SetMetadataLoadingIfCurrent(generation, true)) return;
+        try
+        {
+            var result = await AccountMetadataLoader();
+            SetMetadataIfCurrent(generation, result);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            SetMetadataIfCurrent(generation, CopilotMetadata.Unavailable);
+        }
+        finally { SetMetadataLoadingIfCurrent(generation, false); }
     }
 
     internal void SetAccount(CopilotAccountState account)
@@ -887,6 +961,47 @@ public sealed class DeskViewModel : ObservableObject
         finally
         {
             selectionPersistLock.Release();
+        }
+    }
+
+    private int InvalidateAccountHydration()
+    {
+        lock (accountHydrationSync)
+        {
+            var generation = Interlocked.Increment(ref accountHydrationGeneration);
+            // These account operations supersede metadata hydration but do not themselves
+            // fetch metadata. The invalidated refresh discards its result and loses loading ownership.
+            SetMetadataLoading(false);
+            return generation;
+        }
+    }
+
+    private int BeginAccountHydration()
+    {
+        lock (accountHydrationSync)
+        {
+            var generation = Interlocked.Increment(ref accountHydrationGeneration);
+            SetMetadataLoading(true);
+            return generation;
+        }
+    }
+
+    private bool SetAccountIfCurrent(int generation, CopilotAccountState account) =>
+        RunIfAccountHydrationCurrent(generation, () => SetAccount(account));
+
+    private bool SetMetadataIfCurrent(int generation, CopilotMetadata value) =>
+        RunIfAccountHydrationCurrent(generation, () => SetMetadata(value));
+
+    private bool SetMetadataLoadingIfCurrent(int generation, bool value) =>
+        RunIfAccountHydrationCurrent(generation, () => SetMetadataLoading(value));
+
+    private bool RunIfAccountHydrationCurrent(int generation, Action action)
+    {
+        lock (accountHydrationSync)
+        {
+            if (generation != Volatile.Read(ref accountHydrationGeneration)) return false;
+            action();
+            return true;
         }
     }
 

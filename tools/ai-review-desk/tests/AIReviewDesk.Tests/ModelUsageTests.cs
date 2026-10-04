@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using AIReviewDesk.App;
@@ -321,5 +322,60 @@ public sealed class ModelUsageTests : IDisposable
         using var absent = JsonDocument.Parse("{\"quotaSnapshots\":{}}"); Assert.Null(CopilotMetadataParser.Quota(absent.RootElement, DateTimeOffset.UtcNow));
         using var malformed = JsonDocument.Parse("""{"quotaSnapshots":{"premium_interactions":{"hasQuota":true,"entitlementRequests":300,"usedRequests":42,"remainingPercentage":101,"tokenBasedBilling":false,"isUnlimitedEntitlement":false}}}""");
         Assert.Throws<InvalidOperationException>(() => CopilotMetadataParser.Quota(malformed.RootElement, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Compact_allowance_displays_truthful_units_states_amount_and_tooltip()
+    {
+        var vm = new DeskViewModel(root);
+        Assert.Equal("Copilot · Checking…", vm.CopilotAllowanceCompact);
+        Assert.Contains("Checking", vm.CopilotAllowanceTooltip);
+
+        vm.SetMetadata(CopilotMetadata.Unavailable);
+        Assert.Equal("Copilot · Usage unavailable", vm.CopilotAllowanceCompact);
+
+        var fetched = new DateTimeOffset(2026, 10, 4, 18, 3, 0, TimeSpan.Zero);
+        var credits = new CopilotQuota("AI credits", 50m, 16.3m, 67.4m, false, fetched);
+        vm.SetMetadata(new(CopilotModelPolicy.Verified, credits, ""));
+        Assert.Equal($"Copilot · {(credits.Entitlement - credits.Used).ToString("0.###", CultureInfo.CurrentCulture)} / {credits.Entitlement.ToString("N0", CultureInfo.CurrentCulture)} AI credits remaining", vm.CopilotAllowanceCompact);
+        Assert.Contains($"Used {credits.Used.ToString("0.###", CultureInfo.CurrentCulture)} of 50 AI credits", vm.CopilotAllowanceTooltip);
+        Assert.Contains($"{credits.RemainingPercentage.ToString("0.#", CultureInfo.CurrentCulture)}% remaining", vm.CopilotAllowanceTooltip);
+        Assert.Contains(fetched.ToLocalTime().ToString("t"), vm.CopilotAllowanceTooltip);
+
+        var requests = credits with { Unit = "Premium requests", Entitlement = 150m, Used = 27m, RemainingPercentage = 82m };
+        vm.SetMetadata(new(CopilotModelPolicy.Verified, requests, ""));
+        Assert.Equal("Copilot · 123 / 150 requests remaining", vm.CopilotAllowanceCompact);
+        Assert.DoesNotContain("AI credits", vm.CopilotAllowanceCompact);
+
+        vm.SetMetadata(new(CopilotModelPolicy.Verified, credits with { Unlimited = true }, ""));
+        Assert.Equal("Copilot · Unlimited", vm.CopilotAllowanceCompact);
+    }
+
+    [Fact]
+    public void Compact_allowance_omits_unreliable_remaining_amount_and_formats_without_excess_decimals()
+    {
+        var vm = new DeskViewModel(root);
+        var quota = new CopilotQuota("AI credits", 50m, 16.333333m, 67.499m, false, DateTimeOffset.UtcNow);
+        vm.SetMetadata(new(CopilotModelPolicy.Verified, quota, ""));
+        Assert.Contains($"{(quota.Entitlement - quota.Used).ToString("0.###", CultureInfo.CurrentCulture)} / 50 AI credits remaining", vm.CopilotAllowanceCompact);
+
+        vm.SetMetadata(new(CopilotModelPolicy.Verified, quota with { Used = 60m }, ""));
+        Assert.Equal($"Copilot · {quota.RemainingPercentage.ToString("0.#", CultureInfo.CurrentCulture)}% left", vm.CopilotAllowanceCompact);
+        Assert.DoesNotContain("AI credits", vm.CopilotAllowanceCompact);
+        Assert.DoesNotContain("-", vm.CopilotAllowanceCompact);
+
+        vm.SetMetadata(new(CopilotModelPolicy.Verified, quota with { Entitlement = 0m, Used = 0m }, ""));
+        Assert.Equal($"Copilot · {quota.RemainingPercentage.ToString("0.#", CultureInfo.CurrentCulture)}% left", vm.CopilotAllowanceCompact);
+    }
+
+    [Fact]
+    public void Metadata_updates_raise_allowance_property_notifications()
+    {
+        var vm = new DeskViewModel(root);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+        vm.SetMetadata(new(CopilotModelPolicy.Verified, new CopilotQuota("Premium requests", 10, 2, 80, false, DateTimeOffset.UtcNow), ""));
+        Assert.Contains(nameof(vm.CopilotAllowanceCompact), changed);
+        Assert.Contains(nameof(vm.CopilotAllowanceTooltip), changed);
     }
 }

@@ -19,14 +19,15 @@ public static class CopilotProcess
 
     // Frames are borrowed only for the synchronous callback. Production validates the
     // UTF-8 memory directly and does not materialize echoed prompt/tool-result strings.
-    public static Task<CopilotProcessResult> RunFramesAsync(ProcessStartInfo info, string? stdin, Action<ReadOnlyMemory<byte>> onFrame, CancellationToken cancellationToken) =>
-        RunCoreAsync(info, stdin, onFrame, cancellationToken, requireTerminator: true);
+    public static Task<CopilotProcessResult> RunFramesAsync(ProcessStartInfo info, string? stdin, Action<ReadOnlyMemory<byte>> onFrame, CancellationToken cancellationToken, Action? onStarted = null) =>
+        RunCoreAsync(info, stdin, onFrame, cancellationToken, requireTerminator: true, onStarted);
 
-    private static async Task<CopilotProcessResult> RunCoreAsync(ProcessStartInfo info, string? stdin, Action<ReadOnlyMemory<byte>> onFrame, CancellationToken cancellationToken, bool requireTerminator)
+    private static async Task<CopilotProcessResult> RunCoreAsync(ProcessStartInfo info, string? stdin, Action<ReadOnlyMemory<byte>> onFrame, CancellationToken cancellationToken, bool requireTerminator, Action? onStarted = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var process = new Process { StartInfo = info };
         if (!process.Start()) throw new InvalidOperationException("Copilot could not start.");
+        onStarted?.Invoke();
         var diagnostics = false;
         var stdout = ConsumeFramesAsync(process.StandardOutput.BaseStream, onFrame, cancellationToken, requireTerminator);
         var stderr = ConsumeDiagnosticsAsync(process.StandardError.BaseStream, () => diagnostics = true, cancellationToken);

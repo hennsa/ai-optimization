@@ -99,7 +99,7 @@ public sealed class PromptPreviewServiceTests
             repo.Write("a.txt", "execution version");
             var fingerprint = await new GitReviewContext().FingerprintAsync(repo.Root);
             var called = false;
-            vm.ReviewRunner = (input, _, _, _, _) =>
+            vm.ReviewRunner = (input, _, _, _, _, _) =>
             {
                 called = true; Assert.False(input.IsPreview); Assert.Equal(fingerprint, input.Fingerprint);
                 Assert.Contains("execution version", input.Context);

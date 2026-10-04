@@ -89,18 +89,47 @@ public sealed class CoreReviewTests
     }
 
     [Fact]
+    public void Handoff_entry_points_reject_null_records_with_argument_null_exception()
+    {
+        Assert.Throws<ArgumentNullException>(() => HandoffFormatter.FormatForChatGPT(null!));
+        Assert.Throws<ArgumentNullException>(() => HandoffFormatter.FormatForCodex(null!));
+    }
+
+    [Fact]
     public void Codex_handoff_requires_independent_verification_and_withholds_implementation_authority()
     {
         var handoff = HandoffFormatter.FormatForCodex(Record());
 
-        Assert.Contains("Independently verify each Copilot finding", handoff);
-        Assert.Contains("Do not implement a finding merely because Copilot reported it", handoff);
         Assert.Contains("Do not modify anything unless the current task explicitly authorizes implementation", handoff);
         Assert.Contains("before abc; after abc", handoff);
         Assert.Contains("No findings reported.", handoff);
         Assert.Contains("suggestions for independent verification", handoff);
         Assert.Contains("Shared reviewer policy: v1", handoff);
-        Assert.Contains("likely false positive", HandoffFormatter.FormatForChatGPT(Record()));
+        Assert.Contains("Do not treat no findings as proof", HandoffFormatter.FormatForChatGPT(Record()));
+        Assert.Contains("Independently inspect the current repository change", handoff);
+        Assert.DoesNotContain("correctness has been proven", handoff, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Zero_findings_handoffs_request_an_independent_assessment_without_claiming_correctness()
+    {
+        var chatGpt = HandoffFormatter.FormatForChatGPT(Record());
+        var codex = HandoffFormatter.FormatForCodex(Record());
+
+        Assert.Contains("assess whether this no-findings result is reasonable", chatGpt);
+        Assert.Contains("Do not treat no findings as proof", chatGpt);
+        Assert.DoesNotContain("Assess each independent review finding", chatGpt);
+        Assert.Contains("Look for defects the reviewer may have missed", codex);
+        Assert.Contains("Do not treat no findings as proof", codex);
+        Assert.DoesNotContain("Independently verify each Copilot finding", codex);
+    }
+
+    [Fact]
+    public void Handoffs_with_findings_retain_finding_assessment_workflows()
+    {
+        var record = Record() with { Result = new ReviewResult { Findings = [new ReviewFinding { Id = "f1", Title = "Issue" }] } };
+        Assert.Contains("Assess each independent review finding", HandoffFormatter.FormatForChatGPT(record));
+        Assert.Contains("Independently verify each Copilot finding", HandoffFormatter.FormatForCodex(record));
     }
 
     [Fact]

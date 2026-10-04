@@ -23,7 +23,13 @@
  </ui:FluentWindow.Resources>
  <Grid>
   <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-  <ui:TitleBar Title="AI Review Desk" ShowMaximize="True" />
+  <ui:TitleBar Title="AI Review Desk" ShowMaximize="True">
+   <ui:TitleBar.TrailingContent>
+    <TextBlock Text="{Binding CopilotAllowanceCompact}" ToolTip="{Binding CopilotAllowanceTooltip}"
+     Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center"
+     HorizontalAlignment="Right" MaxWidth="340" TextTrimming="CharacterEllipsis" Margin="8,0,12,0" />
+   </ui:TitleBar.TrailingContent>
+  </ui:TitleBar>
   <Grid Grid.Row="1" IsEnabled="{Binding Interactive}">
    <Grid.ColumnDefinitions><ColumnDefinition Width="252" MinWidth="190" /><ColumnDefinition Width="5" /><ColumnDefinition Width="*" MinWidth="420" /></Grid.ColumnDefinitions>
    <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0" Padding="16,20,16,16">
