@@ -1,4 +1,5 @@
 using AIReviewDesk.Core;
+using System.Text;
 
 namespace AIReviewDesk.Infrastructure;
 
@@ -34,6 +35,34 @@ public sealed class CertificationFixture : IAsyncDisposable
     public Task SetCaseAsync(bool defect, CancellationToken ct) => File.WriteAllTextAsync(Path.Combine(Repository, "Counter.cs"),
         defect ? "// Increment must return the next integer.\npublic static class Counter { public static int Increment(int value) => value - 1; }\n" :
             "// Increment returns the next integer.\npublic static class Counter { public static int Increment(int value) => value + 1; }\n", ct);
+
+    public async Task<PromptSizeEvidence> PrepareLargeContextAsync(int targetPromptCharacters = 1_516_000, CancellationToken ct = default)
+    {
+        if (targetPromptCharacters < ReviewContextCapability.LargePromptCharacterBoundary || targetPromptCharacters > GitReviewContext.MaxContextCharacters)
+            throw new ArgumentOutOfRangeException(nameof(targetPromptCharacters));
+        await SetCaseAsync(false, ct);
+        var initial = await new GitReviewContext().PrepareAsync(Project, ReviewScope.WorkingChanges, ct: ct);
+        var initialPrompt = PromptComposer.Compose(initial, ["standard"]);
+        var remaining = targetPromptCharacters - initialPrompt.Length;
+        var line = "// ARD_SYNTHETIC_NO_CUSTOMER_DATA: deterministic low-semantic-noise fixture material.\n";
+        var files = 0;
+        while (remaining > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            var chars = Math.Min(120_000, remaining);
+            var content = new StringBuilder(chars + line.Length);
+            content.Append(line);
+            while (content.Length + line.Length <= chars) content.Append(line);
+            if (content.Length < chars) content.Append(' ', chars - content.Length);
+            await File.WriteAllTextAsync(Path.Combine(Repository, $"synthetic-noise-{files++:D3}.cs"), content.ToString(), ct);
+            remaining -= content.Length;
+        }
+        var input = await new GitReviewContext().PrepareAsync(Project, ReviewScope.WorkingChanges, ct: ct);
+        var evidence = ReviewContextCapability.Measure(PromptComposer.Compose(input, ["standard"]));
+        if (evidence.CharacterCount < ReviewContextCapability.LargePromptCharacterBoundary || evidence.CharacterCount > GitReviewContext.MaxContextCharacters)
+            throw new InvalidOperationException("Synthetic large-context fixture exceeded the bounded product context.");
+        return evidence;
+    }
     public ValueTask DisposeAsync()
     {
         if (!Path.GetFullPath(Root).StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Invalid fixture cleanup target.");

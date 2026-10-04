@@ -104,14 +104,14 @@ public sealed partial class CopilotService
         progress?.Report(certificate.Status == CertificationStatus.Certified ? "Certified; available for new reviews" : "Not certified; see compatibility evidence");
         return certificate;
     }
-    private async Task<CompatibilityRun> CompatibilityCallAsync(CertificationFixture fixture, ReviewExecutionSettings execution, string[] tools, bool cancelProbe, CancellationToken ct, string envelopeId = OutputEnvelope.RawJson, bool discoverEnvelope = false)
+    private async Task<CompatibilityRun> CompatibilityCallAsync(CertificationFixture fixture, ReviewExecutionSettings execution, string[] tools, bool cancelProbe, CancellationToken ct, string envelopeId = OutputEnvelope.RawJson, bool discoverEnvelope = false, TimeSpan? timeoutOverride = null)
     {
         var input = await new GitReviewContext().PrepareAsync(fixture.Project, ReviewScope.WorkingChanges, ct: ct);
         var run = CreateRunDirectory(); var usageFile = Path.Combine(run, "usage.json");
         var validator = new CopilotStreamValidator(tools, execution.ModelId, envelopeId, discoverEnvelope);
         var ownedSession = Guid.NewGuid();
         ReviewUsage? usage = null; ReviewResult? result = null; string? failure = null; var cancelled = false; var launchedOwnedSession = false; var cleanup = true;
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(timeoutOverride ?? TimeSpan.FromMinutes(3));
         try
         {
             var configuration = CopilotPreflight.Inspect(Profile, run, fixture.Repository);

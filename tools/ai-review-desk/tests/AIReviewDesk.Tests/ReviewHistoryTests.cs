@@ -66,6 +66,18 @@ public sealed class ReviewHistoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Prompt_size_evidence_persists_only_compact_counts_and_classification()
+    {
+        var record = Record() with { PromptSize = new(1_516_123, 1_516_456, ReviewContextClass.Large, ReviewContextCapability.BoundaryVersion) };
+        await new ReviewHistoryStore(root).SaveAsync(record);
+        var file = Directory.GetFiles(Path.Combine(root, "Reviews"), "*.json", SearchOption.AllDirectories).Single();
+        var json = await File.ReadAllTextAsync(file);
+        Assert.Contains("1516123", json); Assert.Contains("1516456", json); Assert.Contains("Large", json);
+        Assert.DoesNotContain("PRIVATE_PROMPT_CONTENT", json); Assert.DoesNotContain("ResponseContent", json);
+        Assert.Equal(record.PromptSize, Assert.Single(await new ReviewHistoryStore(root).LoadAsync(projectId)).PromptSize);
+    }
+
+    [Fact]
     public async Task Historical_names_versions_snapshot_and_handoffs_use_persisted_result()
     {
         var store = new ReviewHistoryStore(root);

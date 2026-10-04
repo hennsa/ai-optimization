@@ -30,6 +30,8 @@ public sealed record ModelCertificate
     public string Source { get; init; } = "locally certified";
     public string? EvidenceNote { get; init; }
     public ReviewUsage? Usage { get; init; }
+    // Additive capability: legacy/basic certificates never imply Large support.
+    public LargeContextCertificate? LargeContext { get; init; }
 }
 
 public sealed record ModelCompatibility(CopilotModelChoice Model, CertificationStatus Status, ModelCertificate? Certificate, string? Reason)
@@ -40,13 +42,20 @@ public sealed record ModelCompatibility(CopilotModelChoice Model, CertificationS
     public string StatusLabel => Status switch { CertificationStatus.NeedsRetest => "Needs retest", CertificationStatus.NoLongerAdvertised => "No longer advertised", _ => Status.ToString() };
     public bool CanTest => Model.Efforts.Count > 0 && Status is not (CertificationStatus.Testing or CertificationStatus.NoLongerAdvertised);
     public string TestLabel => Certificate == null ? "Test compatibility" : "Retest compatibility";
-    public string Detail => $"Copilot reasoning: {string.Join(", ", Model.Efforts)}" + (Certificate == null ? "" :
+    public string ContextDisplay => Model.Context?.Display ?? "Maximum prompt tokens: Unavailable\nMaximum output tokens: Unavailable\nContext window: Unavailable\nSupported context tiers: Unavailable";
+    public bool CanTestLarge => Status == CertificationStatus.Certified && Certificate != null && !string.IsNullOrEmpty(Certificate.ModelId);
+    public string LargeTestLabel => Certificate?.LargeContext?.Status == CertificationStatus.Certified ? "Retest large-context compatibility" : "Test large-context compatibility";
+    public string LargeContextDisplay => Certificate?.LargeContext is { } large
+        ? $"Large-context compatibility: {(large.Status == CertificationStatus.Testing ? "Testing" : large.Status == CertificationStatus.Certified && Status == CertificationStatus.Certified && CertificationContract.LargeContextInvalidReason(Certificate!, Model, Certificate!.CliVersion, large.ReasoningEffort) == null ? $"Certified up to {large.TestedPromptCharacters:N0} prompt characters" : "Needs retest")} · {large.TestedPromptUtf8Bytes:N0} UTF-8 bytes tested" + (large.ActualInputTokens is long input ? $" · {input:N0} input tokens" : " · input tokens unavailable") + (large.ActualOutputTokens is long output ? $" · {output:N0} output tokens" : " · output tokens unavailable")
+        : "Large-context compatibility: Not tested";
+    public string Detail => $"Copilot reasoning: {string.Join(", ", Model.Efforts)}\nLive context capability (informational; separate from billing and certification):\n{ContextDisplay}" + (Certificate == null ? "" :
         $"\n{(Certificate.Source == "locally certified" && Status != CertificationStatus.Certified ? "local certification attempt" : Certificate.Source)} · CLI {Certificate.CliVersion} · {Certificate.TestedAt.LocalDateTime:g}\n{(Status == CertificationStatus.Certified ? "Certified" : "Tested")} reasoning: {string.Join(", ", Certificate.ReasoningEfforts)} · tools: {string.Join(", ", Certificate.ExpectedTools)}\nOutput: {OutputEnvelope.Label(Certificate.OutputEnvelopeId)}") + (Reason == null ? "" : $"\n{Reason}");
     public string Evidence => Certificate == null ? "No certification evidence yet." : (Certificate.EvidenceNote == null ? "" : Certificate.EvidenceNote + "\n") +
         $"Envelope contract: {Certificate.OutputEnvelopeId} · version {Certificate.OutputEnvelopeVersion}\nSchema contract: {Certificate.OutputContract}\nSuccessful envelope observations: {Certificate.SuccessfulEnvelopeObservations}" +
         (Certificate.SchemaVersion == 1 ? (Certificate.Status == CertificationStatus.Certified ? " (legacy strict raw JSON evidence)" : " (legacy attempted raw JSON contract)") : "") + "\n" +
         string.Join("\n", Certificate.EnvelopeObservations.Select(o => $"{o.Case}: {OutputEnvelope.Label(o.EnvelopeId)} · envelope {(o.EnvelopePassed ? "passed" : "failed")} · JSON {(o.JsonParsed ? "passed" : "failed")} · schema {(o.SchemaPassed ? "passed" : "failed")}" + (o.Structure == null ? "" : $"\nStructure: {o.Structure}"))) + "\n" +
-        string.Join("\n", Certificate.Probes.Select(p => $"{p.Name}: {(p.Passed ? "passed" : "failed")}")) + (Certificate.Usage == null ? "" : "\n" + Certificate.Usage.Display);
+        string.Join("\n", Certificate.Probes.Select(p => $"{p.Name}: {(p.Passed ? "passed" : "failed")}")) + (Certificate.Usage == null ? "" : "\n" + Certificate.Usage.Display) +
+        "\n" + LargeContextDisplay + (Certificate?.LargeContext?.FailureReason is string failure ? "\n" + failure : "");
 }
 
 public static class CertificationContract
@@ -68,6 +77,31 @@ public static class CertificationContract
     public static IReadOnlyList<ModelCertificate> BundledModels => Baseline.Models;
     public static IReadOnlyList<ToolCapabilityCertificate> BundledTools => Baseline.Tools;
     public static bool ToolCertified(string cli, string name, IEnumerable<ToolCapabilityCertificate> tools) => tools.Any(t => t.CliVersion == cli && t.ToolName == name && t.CapabilityContract == ToolVersion);
+    public static string? LargeContextInvalidReason(ModelCertificate basic, CopilotModelChoice live, string? cli, string effort, int? requiredPromptCharacters = null)
+    {
+        var large = basic.LargeContext;
+        if (basic.Status != CertificationStatus.Certified || InvalidReason(basic, cli, BundledTools) != null || large == null || large.Status != CertificationStatus.Certified)
+            return "A valid basic certificate and a large-context certificate are both required.";
+        if (large.CliVersion != cli || large.ModelId != live.Id || large.ReasoningEffort != effort ||
+            large.AuthorityContract != AuthorityVersion || large.ToolContract != ToolVersion || !large.ExpectedTools.SequenceEqual(basic.ExpectedTools) || large.OutputContract != OutputVersion ||
+            large.OutputEnvelopeId != basic.OutputEnvelopeId || large.OutputEnvelopeVersion != basic.OutputEnvelopeVersion ||
+            large.SuiteVersion != ReviewContextCapability.LargeSuiteVersion || large.BoundaryVersion != ReviewContextCapability.BoundaryVersion ||
+            large.TestedPromptCharacters < ReviewContextCapability.LargePromptCharacterBoundary || large.TestedPromptCharacters > ReviewContextCapability.MaximumPromptCharacterBound ||
+            large.TestedPromptUtf8Bytes < large.TestedPromptCharacters || large.TestedPromptUtf8Bytes > (long)large.TestedPromptCharacters * 4 ||
+            large.Probes.Any(probe => !probe.Passed) || !large.Probes.Any(probe => probe.Name == "zero findings" && probe.Passed) ||
+            !large.Probes.Any(probe => probe.Name == "deliberate defect" && probe.Passed) ||
+            large.EnvelopeObservations.Length != 2 || !large.EnvelopeObservations.Any(observation => observation.Case == "zero findings") || !large.EnvelopeObservations.Any(observation => observation.Case == "deliberate defect") ||
+            large.EnvelopeObservations.Any(observation => !observation.EnvelopePassed || !observation.JsonParsed || !observation.SchemaPassed || observation.EnvelopeId != large.OutputEnvelopeId || observation.EnvelopeVersion != large.OutputEnvelopeVersion))
+            return "The large-context runtime, authority, output or suite contract changed. Large-context retesting is required.";
+        if (requiredPromptCharacters is int required && required > large.TestedPromptCharacters)
+            return "This prompt exceeds the certified large-context size. Retest large-context compatibility at a representative size, use Selected Paths, or choose a model certified for this size.";
+        if (!ContextEquivalent(large.ContextCapabilityAtTest, live.Context))
+            return "Advertised context limits changed since large-context certification. Large-context retesting is required.";
+        return null;
+    }
+    private static bool ContextEquivalent(CopilotModelContext? a, CopilotModelContext? b) =>
+        a?.MaxPromptTokens == b?.MaxPromptTokens && a?.MaxOutputTokens == b?.MaxOutputTokens && a?.MaxContextWindowTokens == b?.MaxContextWindowTokens &&
+        (a?.SupportedContextTiers ?? []).Order(StringComparer.Ordinal).SequenceEqual((b?.SupportedContextTiers ?? []).Order(StringComparer.Ordinal), StringComparer.Ordinal);
     public static string? InvalidReason(ModelCertificate c, string? cli, IEnumerable<ToolCapabilityCertificate> tools, string suite = SuiteVersion)
     {
         if (c.SchemaVersion is not (1 or 2) || c.CliVersion != cli || c.SuiteVersion != suite || c.AuthorityContract != AuthorityVersion || c.OutputContract != OutputVersion)

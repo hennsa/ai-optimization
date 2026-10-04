@@ -10,8 +10,10 @@ public sealed class GitReviewContext
     private readonly Func<string, CancellationToken, Task<string>> executionFingerprint;
     public GitReviewContext() => executionFingerprint = FingerprintAsync;
     internal GitReviewContext(Func<string, CancellationToken, Task<string>> fingerprint) => executionFingerprint = fingerprint;
-    private const int MaxDiffCharacters = 1_500_000;
-    internal const int MaxContextCharacters = 1_600_000;
+    // Allows the evidence-backed ~1.52M composed-prompt probe while preserving the
+    // independent 1.6M final-context ceiling below.
+    private const int MaxDiffCharacters = 1_550_000;
+    internal const int MaxContextCharacters = ReviewContextCapability.MaximumPromptCharacterBound;
     private const int MaxUntrackedBytes = 128 * 1024;
 
     public async Task<ReviewInput> PrepareAsync(

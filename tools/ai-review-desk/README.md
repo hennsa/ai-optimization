@@ -186,3 +186,4 @@ Phase 1 and Phase 2 observations apply to Copilot CLI 1.0.91 and the tested Wind
 - [Copilot CLI contract and proof plan](docs/copilot-cli-contract-proof.md)
 - [Review profile design](docs/review-profiles.md)
 - [Implementation plan](docs/implementation-plan.md)
+- [Large-context certification boundary and behavior](docs/large-context-certification.md)

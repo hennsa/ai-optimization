@@ -129,6 +129,7 @@ public sealed partial class CopilotService
         if (input.IsPreview) throw new ReviewValidationException("Preview cannot authorize execution. Prepare the repository afresh before starting.");
         var ids = profileIds.ToArray();
         var prompt = PromptComposer.Compose(input, ids);
+        var promptSize = ReviewContextCapability.Measure(prompt);
         var profiles = BuiltInProfiles.All.Where(p => ids.Contains(p.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
         var record = new ReviewRecord
         {
@@ -139,7 +140,7 @@ public sealed partial class CopilotService
             ProfileVersions = profiles.ToDictionary(p => p.Id, p => p.Version), SharedPolicyVersion = SharedReviewerPolicy.Version, AppVersion = "0.1.0",
             ProfileNames = profiles.ToDictionary(p => p.Id, p => p.Name),
             ChangedFileCount = input.Snapshot.ChangedFileCount, TrackedChangedCount = input.Snapshot.TrackedChangedCount, UntrackedCount = input.Snapshot.UntrackedCount, FingerprintBefore = input.Fingerprint,
-            DiffHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input.Context))), Status = ReviewStatus.Failed
+            DiffHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input.Context))), PromptSize = promptSize, Status = ReviewStatus.Failed
         };
         string? run = null;
         ModelCertificate? certificate = null; CopilotStreamValidator? validator = null;
@@ -155,11 +156,19 @@ public sealed partial class CopilotService
             record = record with { CopilotCliVersion = account.Version ?? "" };
             if (!account.Available || !account.Supported) return record with { Status = ReviewStatus.Unsupported, Diagnostic = account.Message };
 
+            if (promptSize.ContextClass == ReviewContextClass.Large && record.RequestedExecution!.IsAutoModel)
+                throw new ReviewValidationException("This review has a large context. Auto cannot be used because its runtime model is unknown before launch. Choose a model with large-context certification, test large-context compatibility, or use Selected Paths to reduce scope.");
             if (!record.RequestedExecution!.IsAutoModel)
             {
                 var metadata = await GetMetadataAsync(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 certificate = new CertificationRegistry(dataDirectory).Resolve(record.RequestedExecution, metadata.Models, account.Version);
+                if (promptSize.ContextClass == ReviewContextClass.Large)
+                {
+                    var live = metadata.Models.Single(m => m.Id == record.RequestedExecution.ModelId);
+                    var reason = CertificationContract.LargeContextInvalidReason(certificate, live, account.Version, record.RequestedExecution.ReasoningEffort, promptSize.CharacterCount);
+                    if (reason != null) throw new ReviewValidationException($"This review has a large context. {live.Name} has not been certified for reviews of this size. {reason} Test large-context compatibility, use Selected Paths to reduce scope, or choose another model with a valid large-context certificate.");
+                }
             }
             run = CreateRunDirectory();
             var configuration = CopilotPreflight.Inspect(Profile, run, input.Project.RepositoryPath);

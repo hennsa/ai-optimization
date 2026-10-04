@@ -93,9 +93,37 @@ public static class CopilotMetadataParser
             if (efforts.Length > 16 || efforts.Any(e => e.Length is < 1 or > 32 || e.StartsWith('-') || e.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)))) throw new InvalidOperationException("Invalid efforts metadata.");
             var name = entry.TryGetProperty("name", out var display) && display.ValueKind == JsonValueKind.String ? display.GetString()! : CopilotModelPolicy.DisplayName(id);
             if (name.Length > 128) throw new InvalidOperationException("Invalid model display name.");
-            models.Add(new(id, name, ["auto", .. efforts.Where(e => e != "auto")], Billing(entry)));
+            models.Add(new(id, name, ["auto", .. efforts.Where(e => e != "auto")], Billing(entry), Context(entry)));
         }
         return models;
+    }
+
+    private static CopilotModelContext? Context(JsonElement model)
+    {
+        var prompt = OptionalLimit(model, "max_prompt_tokens");
+        var output = OptionalLimit(model, "max_output_tokens");
+        var window = OptionalLimit(model, "max_context_window_tokens");
+        IReadOnlyList<string> tiers = [];
+        var tierKey = model.TryGetProperty("supportedContextTiers", out var tierValue) ? "supportedContextTiers" :
+            model.TryGetProperty("supported_context_tiers", out _) ? "supported_context_tiers" : null;
+        if (tierKey != null)
+        {
+            tierValue = model.GetProperty(tierKey);
+            if (tierValue.ValueKind != JsonValueKind.Array || tierValue.GetArrayLength() > 32) throw new InvalidOperationException("Invalid context tiers metadata.");
+            var parsed = tierValue.EnumerateArray().Select(value => value.ValueKind == JsonValueKind.String ? value.GetString()! : throw new InvalidOperationException("Invalid context tier."))
+                .Distinct(StringComparer.Ordinal).ToArray();
+            if (parsed.Any(value => value.Length is < 1 or > 64 || value.Any(char.IsControl))) throw new InvalidOperationException("Invalid context tier.");
+            tiers = parsed;
+        }
+        return prompt == null && output == null && window == null && tiers.Count == 0 ? null : new(prompt, output, window, tiers);
+    }
+
+    private static long? OptionalLimit(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value)) return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out var number) || number is < 1 or > 1_000_000_000_000)
+            throw new InvalidOperationException("Invalid model context limit.");
+        return number;
     }
 
     private static CopilotModelBilling? Billing(JsonElement model)

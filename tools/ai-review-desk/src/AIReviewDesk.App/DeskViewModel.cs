@@ -34,6 +34,7 @@ public sealed class DeskViewModel : ObservableObject
     private ReviewScope scope = ReviewScope.WorkingChanges;
     private ReviewProfile? selectedProfile;
     private ReviewInput? preparedInput;
+    private PromptSizeEvidence? preparedPromptSize;
     private int previewGeneration;
     private ReviewRecord? latestReview;
     private CancellationTokenSource? reviewCancellation;
@@ -65,10 +66,12 @@ public sealed class DeskViewModel : ObservableObject
         refreshAccount = accountRefresher ?? RefreshStartupCopilotAccountAsync;
         ReviewRunner = copilot.RunAsync;
         CertificationRunner = copilot.TestCompatibilityAsync;
+        LargeCertificationRunner = copilot.TestLargeContextCompatibilityAsync;
     }
 
     internal Func<ReviewInput, IEnumerable<string>, IProgress<string>?, CancellationToken, ReviewExecutionSettings?, Task<ReviewRecord>> ReviewRunner { get; set; }
     internal Func<string, string, IProgress<string>?, CancellationToken, Task<ModelCertificate>> CertificationRunner { get; set; }
+    internal Func<string, string, IProgress<string>?, CancellationToken, Task<ModelCertificate>> LargeCertificationRunner { get; set; }
     internal Func<PromptPreviewRequest, IProgress<string>?, CancellationToken, Task<PreparedPromptPreview>> PreviewPreparer { get; set; } = new PromptPreviewService().PrepareAsync;
 
     public ObservableCollection<ProjectRegistration> Projects { get; } = [];
@@ -103,6 +106,9 @@ public sealed class DeskViewModel : ObservableObject
     public string ReasoningHint => execution.IsAutoModel ? "Choose an explicit model to override reasoning. Auto leaves both settings to the CLI." : EffortChoices.Count == 1 ? "Only this model’s certified reasoning level is available." : "Only this model's verified reasoning levels are shown. Auto passes no effort override.";
     public string CopilotUsage => metadataLoading ? "Loading account allowance and model metadata…" : metadata.UsageDisplay;
     public string ModelMetadataStatus => metadataLoading ? "Loading live model metadata…" : metadata.ModelsAvailable ? "Live model metadata loaded." : "Live model metadata is unavailable. Refresh status to try again.";
+    public string PromptSizeDisplay => preparedPromptSize == null ? "Prepare a prompt to see its size." : $"Prompt size: {preparedPromptSize.CharacterCount:N0} characters · {preparedPromptSize.Utf8ByteCount:N0} UTF-8 bytes · {preparedPromptSize.ContextClass} context (characters are not tokens)." +
+        (preparedInput == null ? "" : $" Repository inventory: {preparedInput.Snapshot.TrackedChangedCount:N0} tracked changes; {preparedInput.Snapshot.UntrackedCount:N0} untracked files." +
+            (preparedInput.Scope == ReviewScope.WorkingChanges ? " Working Changes includes eligible untracked-file content; Selected Paths narrows the review scope." : ""));
     private void ApplyExecution(ReviewExecutionSettings value)
     {
         execution = value;
@@ -150,6 +156,23 @@ public sealed class DeskViewModel : ObservableObject
             operation?.Complete(result.Status == CertificationStatus.Certified ? "Certified" : result.Status == CertificationStatus.NeedsRetest ? "Cancelled" : "Rejected", CompatibilityResult);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Error = "Compatibility testing could not complete safely."; operation?.Complete("Failed", Error); }
+        finally { compatibilityCancellation.Dispose(); compatibilityCancellation = null; OnPropertyChanged(nameof(IsCompatibilityTesting)); }
+    }
+    public async Task TestLargeContextCompatibilityAsync(ModelCompatibility model, OperationProgress? operation = null)
+    {
+        if (IsCompatibilityTesting || !Interactive || !model.CanTestLarge) return;
+        compatibilityCancellation = new(); OnPropertyChanged(nameof(IsCompatibilityTesting));
+        try
+        {
+            var effort = model.Certificate!.ReasoningEfforts.Contains("high") ? "high" : model.Certificate.ReasoningEfforts.First();
+            var result = await LargeCertificationRunner(model.Model.Id, effort, new Progress<string>(s => { CompatibilityProgress = s; operation?.Report(s); }), compatibilityCancellation.Token);
+            var large = result.LargeContext;
+            CompatibilityResult = $"{result.DisplayName} — {(large?.Status == CertificationStatus.Certified ? "Large-context certified" : "Large-context not certified")}\n" +
+                (large?.FailureReason ?? $"Prompt: {large?.TestedPromptCharacters:N0} characters / {large?.TestedPromptUtf8Bytes:N0} UTF-8 bytes. No prompt or source content was retained.");
+            operation?.Complete(large?.Status == CertificationStatus.Certified ? "Certified" : "Rejected", CompatibilityResult);
+            SetMetadata(metadata);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Error = "Large-context compatibility testing could not complete safely."; operation?.Complete("Failed", Error); }
         finally { compatibilityCancellation.Dispose(); compatibilityCancellation = null; OnPropertyChanged(nameof(IsCompatibilityTesting)); }
     }
     public IReadOnlyList<ReviewProfile> Profiles => BuiltInProfiles.All;
@@ -509,7 +532,9 @@ public sealed class DeskViewModel : ObservableObject
     {
         previewGeneration++;
         preparedInput = null;
+        preparedPromptSize = null;
         OnPropertyChanged(nameof(ReviewInputReady));
+        OnPropertyChanged(nameof(PromptSizeDisplay));
     }
 
     public bool ReviewInputReady => preparedInput != null;
@@ -536,6 +561,7 @@ public sealed class DeskViewModel : ObservableObject
         var profiles = profileIds.ToArray();
         bool IsCurrent() => generation == previewGeneration && Selected == project && Scope == forScope && execution == settings && SelectedProfileIds().SequenceEqual(profiles);
         preparedInput = null;
+        preparedPromptSize = null;
         OnPropertyChanged(nameof(ReviewInputReady));
         ReviewProgress = "Preparing repository…";
         PreparedPromptPreview result;
@@ -553,7 +579,9 @@ public sealed class DeskViewModel : ObservableObject
         if (!IsCurrent()) return "";
         previewGeneration++; // Discard any queued progress after the final state is applied.
         preparedInput = result.Input;
+        preparedPromptSize = result.Size ?? ReviewContextCapability.Measure(result.Prompt);
         OnPropertyChanged(nameof(ReviewInputReady));
+        OnPropertyChanged(nameof(PromptSizeDisplay));
         ReviewProgress = preparedInput.HasReviewableChanges ? "Prompt prepared from the current repository snapshot." : "The selected scope has no changes. Preview is available; Start review is blocked.";
         return result.Prompt;
     }
@@ -589,9 +617,26 @@ public sealed class DeskViewModel : ObservableObject
             OnPropertyChanged(nameof(ReviewInputReady));
             // Validate through the same production composer used by the preview and runner.
             Report("Building review context");
-            _ = PromptComposer.Compose(input, profileIds);
+            var promptSize = ReviewContextCapability.Measure(PromptComposer.Compose(input, profileIds));
+            preparedPromptSize = promptSize;
+            OnPropertyChanged(nameof(PromptSizeDisplay));
+            operation?.UpdateContext($"{selectedExecution.Display}\nProfiles: {string.Join(", ", profileIds.Select(id => BuiltInProfiles.All.Single(profile => profile.Id == id).Name))}\nScope: {forScope}\n{PromptSizeDisplay}");
+            if (promptSize.ContextClass == ReviewContextClass.Large)
+            {
+                if (selectedExecution.IsAutoModel)
+                    throw new ReviewValidationException("This review has a large context. Auto cannot be used because its runtime model is unknown before launch. Test large-context compatibility, use Selected Paths to reduce scope, or choose a model with large-context certification.");
+                var registry = new CertificationRegistry(DataDirectory);
+                var row = registry.Discover(metadata.Models, metadata.CliVersion).SingleOrDefault(candidate => candidate.Model.Id == selectedExecution.ModelId);
+                if (row?.Status != CertificationStatus.Certified || row.Certificate == null)
+                    throw new ReviewValidationException($"This review has a large context. {CopilotModelPolicy.DisplayName(selectedExecution.ModelId)} has no valid basic certificate. Test compatibility, use Selected Paths to reduce scope, or choose a model with large-context certification.");
+                var live = metadata.Models.SingleOrDefault(candidate => candidate.Id == selectedExecution.ModelId);
+                var reason = live == null ? "Live model metadata is unavailable." : CertificationContract.LargeContextInvalidReason(row.Certificate, live, metadata.CliVersion, selectedExecution.ReasoningEffort, promptSize.CharacterCount);
+                if (reason != null)
+                    throw new ReviewValidationException($"This review has a large context. {live?.Name ?? selectedExecution.ModelId} has not been certified for reviews of this size. {reason} Test large-context compatibility, use Selected Paths to reduce scope, or choose another model with a valid large-context certificate.");
+            }
             var progress = new Progress<string>(Report);
             var record = await ReviewRunner(input, profileIds, progress, cancellationToken, selectedExecution);
+            record = record with { PromptSize = promptSize };
             SetMetadata(metadata); // Surface locally persisted runtime suspension without another model call.
             ShowHistoryRecord(record);
             Report("Saving review");

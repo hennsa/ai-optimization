@@ -33,6 +33,8 @@ public sealed class PromptPreviewServiceTests
             paths.Clear(); profiles.Clear(); defaults.Clear(); release.SetResult(true);
             var prepared = await preparation;
             Assert.Equal(PromptComposer.Compose(prepared.Input, ["standard"]), prepared.Prompt);
+            Assert.Equal(prepared.Prompt.Length, prepared.Size!.CharacterCount);
+            Assert.Equal(System.Text.Encoding.UTF8.GetByteCount(prepared.Prompt), prepared.Size.Utf8ByteCount);
             Assert.True(prepared.Input.IsPreview); Assert.Empty(prepared.Input.Fingerprint);
         });
     }

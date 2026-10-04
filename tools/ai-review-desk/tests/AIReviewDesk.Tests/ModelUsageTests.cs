@@ -157,6 +157,29 @@ public sealed class ModelUsageTests : IDisposable
         Assert.Contains("per 1,000,000 tokens", model.Billing.Display);
     }
 
+    [Fact]
+    public void Live_model_context_limits_and_tiers_are_retained_only_when_advertised()
+    {
+        using var present = JsonDocument.Parse("""{"models":[{"id":"synthetic","max_prompt_tokens":1000000,"max_output_tokens":32000,"max_context_window_tokens":2000000,"supportedContextTiers":["standard","large"]}]}""");
+        var context = CopilotMetadataParser.Models(present.RootElement).Single(model => model.Id == "synthetic").Context!;
+        Assert.Equal(1_000_000, context.MaxPromptTokens); Assert.Equal(32_000, context.MaxOutputTokens); Assert.Equal(2_000_000, context.MaxContextWindowTokens);
+        Assert.Equal(new[] { "standard", "large" }, context.SupportedContextTiers); Assert.Contains("2,000,000", context.Display);
+        using var absent = JsonDocument.Parse("""{"models":[{"id":"synthetic"}]}""");
+        var absentModel = CopilotMetadataParser.Models(absent.RootElement).Single(model => model.Id == "synthetic");
+        Assert.Null(absentModel.Context); Assert.Contains("Unavailable", new ModelCompatibility(absentModel, CertificationStatus.Unverified, null, null).Detail);
+    }
+
+    [Theory]
+    [InlineData("{\"models\":[{\"id\":\"synthetic\",\"max_prompt_tokens\":\"1000\"}]}")]
+    [InlineData("{\"models\":[{\"id\":\"synthetic\",\"max_output_tokens\":0}]}")]
+    [InlineData("{\"models\":[{\"id\":\"synthetic\",\"max_context_window_tokens\":-1}]}")]
+    [InlineData("{\"models\":[{\"id\":\"synthetic\",\"supportedContextTiers\":\"large\"}]}")]
+    public void Malformed_context_capability_metadata_is_rejected(string raw)
+    {
+        using var document = JsonDocument.Parse(raw);
+        Assert.Throws<InvalidOperationException>(() => CopilotMetadataParser.Models(document.RootElement));
+    }
+
     [Theory]
     [InlineData("1.0.92", 3)] [InlineData("1.0.91", 4)]
     public void Unsupported_SDK_CLI_combination_is_rejected(string version, int protocol)

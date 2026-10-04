@@ -139,6 +139,7 @@
       <TextBlock Text="{Binding AutoExplanation}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,6" />
       <TextBlock Text="{Binding ReasoningHint}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,6" />
       <TextBlock Text="{Binding ExecutionNotice}" TextWrapping="Wrap" Margin="0,0,0,12" />
+      <Border Style="{StaticResource Card}" Margin="0,0,0,12"><TextBlock Text="{Binding PromptSizeDisplay}" TextWrapping="Wrap" /></Border>
       <TextBlock Text="Choose one or more review profiles" Style="{StaticResource SectionTitle}" Margin="0,20,0,8" />
       <ItemsControl ItemsSource="{Binding ProfileChoices}"><ItemsControl.ItemTemplate><DataTemplate>
        <CheckBox Content="{Binding Profile.Name}" IsChecked="{Binding IsSelected, Mode=TwoWay}" Margin="0,4" />
@@ -281,7 +282,7 @@
       <Border Style="{StaticResource Card}"><StackPanel>
        <TextBlock Text="Model compatibility" Style="{StaticResource SectionTitle}" />
        <TextBlock Text="{Binding ModelMetadataStatus}" Style="{StaticResource Caption}" Margin="0,0,0,8" />
-       <TextBlock Text="Live discovery describes account availability. Only valid certified models can review projects. Testing makes small Copilot calls and can consume account allowance; exact cost is not known beforehand." Style="{StaticResource Caption}" />
+       <TextBlock Text="Live discovery describes account availability. Only valid certified models can review projects. Small compatibility tests can consume allowance; large-context tests use a very large synthetic prompt and can cost materially more. Exact cost is not known beforehand. No customer repository is used." Style="{StaticResource Caption}" />
        <TextBlock Text="Current model rates come from live Copilot metadata and can change. Rates and multipliers are not an exact review cost. Account allowance is shown above; completed reviews record actual emitted usage separately." Style="{StaticResource Caption}" Margin="0,6,0,0" />
        <TextBlock Text="{Binding CompatibilityProgress}" TextWrapping="Wrap" Margin="0,8" />
        <ui:Button Content="Cancel compatibility test" Click="OnCancelCompatibility" Visibility="{Binding IsCompatibilityTesting, Converter={StaticResource BoolVisibility}}" />
@@ -292,6 +293,7 @@
          <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" />
          <TextBlock Text="{Binding BillingDisplay}" TextWrapping="Wrap" Style="{StaticResource Caption}" Margin="0,4,0,0" />
          <ui:Button Content="{Binding TestLabel}" IsEnabled="{Binding CanTest}" Tag="{Binding}" Click="OnTestCompatibility" HorizontalAlignment="Left" Margin="0,6" />
+         <ui:Button Content="{Binding LargeTestLabel}" IsEnabled="{Binding CanTestLarge}" Tag="{Binding}" Click="OnTestLargeCompatibility" HorizontalAlignment="Left" Margin="0,0,0,6" />
          <Expander Header="Certification evidence"><TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" /></Expander>
         </StackPanel>
        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>

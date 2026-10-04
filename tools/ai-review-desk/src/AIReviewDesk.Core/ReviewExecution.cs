@@ -10,7 +10,20 @@ public sealed record ReviewExecutionSettings(string ModelId = "auto", string Rea
     [JsonIgnore] public string Display => $"Model: {CopilotModelPolicy.DisplayName(ModelId)}\nReasoning: {CopilotModelPolicy.EffortName(ReasoningEffort)}";
 }
 
-public sealed record CopilotModelChoice(string Id, string Name, IReadOnlyList<string> Efforts, CopilotModelBilling? Billing = null);
+public sealed record CopilotModelChoice(string Id, string Name, IReadOnlyList<string> Efforts, CopilotModelBilling? Billing = null, CopilotModelContext? Context = null);
+
+/// <summary>Optional limits advertised by the installed Copilot metadata protocol.</summary>
+public sealed record CopilotModelContext(long? MaxPromptTokens, long? MaxOutputTokens, long? MaxContextWindowTokens, IReadOnlyList<string> SupportedContextTiers)
+{
+    public string Display => string.Join("\n", new[]
+    {
+        $"Maximum prompt tokens: {Format(MaxPromptTokens)}",
+        $"Maximum output tokens: {Format(MaxOutputTokens)}",
+        $"Context window: {Format(MaxContextWindowTokens)}",
+        $"Supported context tiers: {(SupportedContextTiers.Count == 0 ? "Unavailable" : string.Join(", ", SupportedContextTiers))}"
+    });
+    private static string Format(long? value) => value is long count ? count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) : "Unavailable";
+}
 
 /// <summary>Current billing metadata advertised for a model by the Copilot metadata RPC.</summary>
 public sealed record CopilotModelBilling(decimal? Multiplier, CopilotTokenPrices? TokenPrices)

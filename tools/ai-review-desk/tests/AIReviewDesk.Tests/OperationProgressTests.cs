@@ -12,6 +12,7 @@ public sealed class OperationProgressTests
     {
         var cancelled = 0;
         var state = new OperationProgress("Review", "Fixture", "Scope", () => cancelled++);
+        state.UpdateContext("Scope\nPrompt size: 1,500,000 characters"); Assert.Contains("1,500,000", state.Context);
         state.Report("Fingerprinting repository"); Assert.Equal("Fingerprinting repository", state.Stage);
         state.Cancel(); state.Cancel(); state.Report("Reviewing");
         Assert.Equal(1, cancelled); Assert.False(state.CanCancel); Assert.True(state.CancellationRequested);

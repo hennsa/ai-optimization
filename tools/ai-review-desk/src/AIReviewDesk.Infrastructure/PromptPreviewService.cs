@@ -4,7 +4,7 @@ using AIReviewDesk.Core;
 namespace AIReviewDesk.Infrastructure;
 
 public sealed record PromptPreviewRequest(ProjectRegistration Project, ReviewScope Scope, IReadOnlyList<string> Paths, IReadOnlyList<string> Profiles);
-public sealed record PreparedPromptPreview(ReviewInput Input, string Prompt);
+public sealed record PreparedPromptPreview(ReviewInput Input, string Prompt, PromptSizeEvidence? Size = null);
 
 /// <summary>One background boundary for advisory preparation and the production composer.
 /// Inputs must be captured by the caller; progress is marshalled by its IProgress implementation.</summary>
@@ -33,7 +33,7 @@ public sealed class PromptPreviewService
             var prompt = PromptComposer.Compose(input, captured.Profiles);
             ct.ThrowIfCancellationRequested();
             Measure(stage, stageTimer);
-            return new PreparedPromptPreview(input, prompt);
+            return new PreparedPromptPreview(input, prompt, ReviewContextCapability.Measure(prompt));
         }, ct);
     }
     private static void Measure(string stage, Stopwatch timer)

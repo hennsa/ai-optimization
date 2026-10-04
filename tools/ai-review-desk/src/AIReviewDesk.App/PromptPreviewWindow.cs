@@ -6,7 +6,7 @@ namespace AIReviewDesk.App;
 
 public sealed class PromptPreviewWindow : Window
 {
-    public PromptPreviewWindow(string prompt, string executionDisplay = "")
+    public PromptPreviewWindow(string prompt, string executionDisplay = "", string sizeDisplay = "")
     {
         Title = "Preview final review prompt";
         Width = 900;
@@ -26,7 +26,7 @@ public sealed class PromptPreviewWindow : Window
         buttons.Children.Add(close);
         DockPanel.SetDock(buttons, Dock.Bottom);
         layout.Children.Add(buttons);
-        var settings = new TextBlock { Text = executionDisplay + "\nPreview reflects the repository state at preview time. The repository is revalidated when the review starts.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
+        var settings = new TextBlock { Text = executionDisplay + "\n" + sizeDisplay + "\nPreview reflects the repository state at preview time. The repository is revalidated when the review starts.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(settings, Dock.Top);
         layout.Children.Add(settings);
 

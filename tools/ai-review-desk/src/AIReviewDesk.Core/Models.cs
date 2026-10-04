@@ -149,6 +149,7 @@ public sealed record ReviewRecord
     public string? CopilotModel { get; init; }
     public ReviewExecutionSettings? RequestedExecution { get; init; }
     public ReviewUsage? Usage { get; init; }
+    public PromptSizeEvidence? PromptSize { get; init; }
     public int ChangedFileCount { get; init; }
     public int? TrackedChangedCount { get; init; }
     public int? UntrackedCount { get; init; }

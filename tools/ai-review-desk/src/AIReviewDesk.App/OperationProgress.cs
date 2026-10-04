@@ -9,10 +9,11 @@ public sealed class OperationProgress(string title, string identity, string cont
 {
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private string stage = "Starting", outcome = "", explanation = "";
+    private string contextText = context;
     private bool finished, cancellationRequested, hasResult;
     public string Title { get; } = title;
     public string Identity { get; } = identity;
-    public string Context { get; } = context;
+    public string Context { get => contextText; private set => SetProperty(ref contextText, value); }
     public ObservableCollection<OperationStage> Stages { get; } = new((stages ?? []).Select(s => new OperationStage(s, "Pending")));
     public string Stage => stage;
     public string Outcome => outcome;
@@ -24,6 +25,7 @@ public sealed class OperationProgress(string title, string identity, string cont
     public string ActionLabel => hasResult ? "_View result" : "_Close";
     public string Elapsed => $"Elapsed {clock.Elapsed:hh\\:mm\\:ss}";
     public void Tick() => OnPropertyChanged(nameof(Elapsed));
+    public void UpdateContext(string value) => Context = value;
 
     public void Report(string value)
     {

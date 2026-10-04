@@ -142,7 +142,7 @@ public partial class MainWindow : FluentWindow
         {
             prompt = await ViewModel.PreparePromptAsync(CurrentScope(), SelectedPaths());
         });
-        if (!string.IsNullOrWhiteSpace(prompt)) new PromptPreviewWindow(prompt, executionDisplay) { Owner = this }.ShowDialog();
+        if (!string.IsNullOrWhiteSpace(prompt)) new PromptPreviewWindow(prompt, executionDisplay, ViewModel.PromptSizeDisplay) { Owner = this }.ShowDialog();
     }
 
     private void OnStartReview(object sender, RoutedEventArgs e)
@@ -182,6 +182,18 @@ public partial class MainWindow : FluentWindow
             // Refresh current Settings only after the final modal result was read/closed.
             await ViewModel.RefreshAccountAsync();
         }
+    }
+    private async void OnTestLargeCompatibility(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.IsCompatibilityTesting || sender is not FrameworkElement { Tag: ModelCompatibility model } || !model.CanTestLarge) return;
+        if (System.Windows.MessageBox.Show(this,
+            $"Test large-context compatibility for {model.Model.Name}?\n\nThis sends a very large synthetic prompt through Copilot and can cost materially more than normal compatibility testing. Exact cost is not known beforehand. No customer repository is used. The generated fixture is deleted after testing.",
+            "Test large-context compatibility", System.Windows.MessageBoxButton.OKCancel, MessageBoxImage.Warning, System.Windows.MessageBoxResult.Cancel) != System.Windows.MessageBoxResult.OK) return;
+        var effort = model.Certificate!.ReasoningEfforts.Contains("high") ? "high" : model.Certificate.ReasoningEfforts.First();
+        var operation = new OperationProgress("Large-context compatibility", model.Model.Name,
+            $"Reasoning: {CopilotModelPolicy.EffortName(effort)}\nSynthetic prompt: approximately 1.52 million characters\nAllowance impact may be materially higher than normal testing", ViewModel.CancelCompatibility);
+        new OperationProgressWindow(operation, () => ViewModel.TestLargeContextCompatibilityAsync(model, operation)) { Owner = this }.ShowDialog();
+        await ViewModel.RefreshAccountAsync();
     }
     private void OnCancelCompatibility(object sender, RoutedEventArgs e) => ViewModel.CancelCompatibility();
     private async void OnSignIn(object sender, RoutedEventArgs e) => await ViewModel.SignInAsync();
