@@ -191,7 +191,7 @@ public partial class MainWindow : FluentWindow
             "Test large-context compatibility", System.Windows.MessageBoxButton.OKCancel, MessageBoxImage.Warning, System.Windows.MessageBoxResult.Cancel) != System.Windows.MessageBoxResult.OK) return;
         var effort = model.Certificate!.ReasoningEfforts.Contains("high") ? "high" : model.Certificate.ReasoningEfforts.First();
         var operation = new OperationProgress("Large-context compatibility", model.Model.Name,
-            $"Reasoning: {CopilotModelPolicy.EffortName(effort)}\nSynthetic prompt: approximately 1.52 million characters\nAllowance impact may be materially higher than normal testing", ViewModel.CancelCompatibility);
+            $"Reasoning: {CopilotModelPolicy.EffortName(effort)}\nSynthetic prompt: Large v2 ceiling — {ReviewContextCapability.MaximumPromptCharacterBound:N0} composed characters\nAllowance impact may be materially higher than normal testing", ViewModel.CancelCompatibility);
         new OperationProgressWindow(operation, () => ViewModel.TestLargeContextCompatibilityAsync(model, operation)) { Owner = this }.ShowDialog();
         await ViewModel.RefreshAccountAsync();
     }
