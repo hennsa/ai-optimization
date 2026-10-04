@@ -2,6 +2,16 @@
 
 ## Executable preview
 
+Review and compatibility testing now share one owned, asynchronous progress modal. It shows operation context, real stages, elapsed time and cancellation. A completed review briefly shows Completed and opens its result; failed/stale/cancelled/unsupported outcomes remain until Close/View result. Certification retains the allowance confirmation and keeps its final tools, output contract and completed-call usage visible until Close, then refreshes Settings.
+
+Prompt Preview uses the production composer and secret/path/conflict/scope validation with a lightweight Git/index/status/changed-file-stat consistency check. It does **not** fingerprint all repository contents. Preview reflects state at preview time and is not immutable or execution authority. Start Review always prepares afresh with full before/after preparation fingerprints and the runner's pre-launch/post-run integrity checks; preview inputs are explicitly rejected by the runner.
+
+Review transport accepts at most **12 MiB per UTF-8 JSONL frame** and **16 MiB total stdout**, including transport delimiters. This supports large echoed prompts and detailed tool results without unbounded output. Every frame still passes the same protocol validator; no large-event bypass exists. Unterminated JSONL and invalid UTF-8 fail closed. Context remains bounded at 1,600,000 characters, including omission notes. See [implementation evidence and limits](docs/copilot-integration-verification.md#review-execution-robustness-billing-and-startup--2026-10-04).
+
+Settings shows current live model billing metadata where Copilot reports it: multiplier and input/output/cache rates, billing batch size and long-context rates. Absent pricing says Pricing unavailable. Rates are separate from account allowance and actual emitted review usage; current rates are not persisted in review history. Model names remain concise.
+
+Startup loads normalized local settings through the shared registry parser, applies saved Light/Dark or resolved System **before constructing/showing the window**, then paints the shell before independent history/Git/Copilot hydration. Loading states are local; selection/history generations discard stale results. System theme watching remains active. Development startup timings are opt-in through `AI_REVIEW_DESK_STARTUP_DIAGNOSTICS=1` (Trace output, no production log files).
+
 New Review selects only **Auto and currently valid certified models**, intersected with live account availability. Settings → **Model compatibility** shows all advertised models, their advertised reasoning levels and certification state. Discovery through the restricted `models.list` adapter is availability, not trust. The default remains **Claude Sonnet 5.5 / High**; discovering or certifying a model changes no project or application defaults.
 
 Certification progresses from discovery/unverified through explicit testing to Certified, Rejected or Needs retest. **Test/Retest compatibility** asks before small Copilot calls that consume allowance, uses only an app-owned disposable repository, and records compact results separately from project history. Rejection explains the latest attempt and permits another test. Local certificates survive restart and make successful models selectable without rebuilding. CLI/suite/authority/output changes, invalid tool certificates, disappeared models and runtime manifest/protocol drift require retesting; every current run still fails closed.
@@ -26,7 +36,7 @@ Each project's **Reviews** opens its newest-first **History**, with **New review
 
 Completed zero-findings runs explicitly say **No findings** without implying defect-free code. Failed, Cancelled, Stale and Unsupported/blocked runs explain that no accepted result is available and expose no completed-result handoffs. **Copy result**, **Copy for ChatGPT** and **Copy for Codex** use the same formatter for new and historical completed results; downstream independent assessment/verification remains required.
 
-**Review again** reuses scope and available profiles, retains selected paths only when they are still in the current changed set, and explains cleared selections. A missing current branch base falls back to Working changes. It opens the normal setup and preview flow without running Copilot; snapshot, fingerprint and diff/context are generated afresh. History never queries Git to replace captured metadata or reconstructs old prompts from current profile instructions.
+**Review again** reuses scope and available profiles, retains selected paths only when they are still in the current changed set, and explains cleared selections. A missing current branch base falls back to Working changes. It opens the normal setup and preview flow without running Copilot; snapshot and diff/context are generated afresh, with full fingerprints captured only for execution. History never queries Git to replace captured metadata or reconstructs old prompts from current profile instructions.
 
 Compact review records now add schema version 2 and captured profile display names. Existing version-1 records load without rewriting; older names appear as saved IDs with “name not recorded”, alongside saved versions. App-state/projects/settings remain on their existing schema. Malformed or future-version review records are skipped and preserved, and non-completed partial results are discarded on load and save. Each record retains the existing 512 KiB size limit; the latest 100 valid runs per project are displayed, with older files preserved. Removing a project preserves its history files; re-adding it creates a new project identity, so old runs are not silently reassociated. No raw protocol, terminal output, full diffs or duplicate final prompts are stored.
 
@@ -95,7 +105,7 @@ Expected areas:
 - **Profiles:** built-in profile descriptions and focus areas; no custom editor in v0.1.
 - **Settings:** General, Appearance, Copilot, Review defaults, Data/history, and About.
 
-During execution, show friendly stages and meaningful progress (preparing context, starting reviewer, receiving review, validating repository state, parsing result). Do not show a terminal by default. Raw/activity output may be expanded for diagnostics, subject to the retention rules below. Present findings as structured cards/items, not only as a text blob.
+During execution, show actual stages in the shared modal (preparing context, starting reviewer, receiving review, validating repository state, parsing and saving result). Never expose raw protocol/activity output. Diagnostics may retain fixed explanations and transport sizes/limit kind, without prompt or tool-result contents. Present findings as structured cards/items, not only as a text blob.
 
 CLI switches and security mechanics are product policy; do not expose them as individually configurable ordinary-user settings.
 

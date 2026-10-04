@@ -94,6 +94,69 @@ public sealed class ModelUsageTests : IDisposable
         Assert.Throws<ReviewValidationException>(() => CopilotModelPolicy.Validate(new("claude-sonnet-5.5", "max"), "1.0.91", new CertificationRegistry(root).Selectable(models, "1.0.91")));
     }
 
+    [Fact]
+    public void Models_keep_only_advertised_billing_rates_and_show_unavailable_prices_truthfully()
+    {
+        using var json = JsonDocument.Parse("""{"models":[{"id":"free-model","billing":{}},{"id":"priced-model","billing":{"multiplier":1.5,"discountPercent":50,"promo":{"message":"ignore"},"tokenPrices":{"inputPrice":3,"outputPrice":15,"cacheReadPrice":0.3,"cacheWritePrice":4,"cacheWrite1hPrice":6,"batchSize":1000000,"maxPromptTokens":999999,"longContext":{"inputPrice":6,"outputPrice":30}}}}]}""");
+        var models = CopilotMetadataParser.Models(json.RootElement);
+        var free = models.Single(m => m.Id == "free-model");
+        Assert.Null(free.Billing);
+        var priced = models.Single(m => m.Id == "priced-model");
+        Assert.Equal(1.5m, priced.Billing!.Multiplier);
+        Assert.Equal(3m, priced.Billing.TokenPrices!.InputPrice);
+        Assert.Equal(15m, priced.Billing.TokenPrices.OutputPrice);
+        Assert.Equal(0.3m, priced.Billing.TokenPrices.CacheReadPrice);
+        Assert.Equal(1_000_000L, priced.Billing.TokenPrices.BatchSize);
+        Assert.Equal(6m, priced.Billing.TokenPrices.LongContext!.InputPrice);
+        Assert.DoesNotContain("50", priced.Billing.Display); // promo/discount data is not product price metadata
+        Assert.DoesNotContain("999999", priced.Billing.Display); // context limits are not rates
+        Assert.Contains("Pricing unavailable", free.Billing?.Display ?? "Pricing unavailable");
+        Assert.Contains("3 AI credits per 1,000,000 tokens", priced.Billing.Display);
+
+        var vm = new DeskViewModel(root);
+        vm.SetMetadata(new(models, null, ""));
+        Assert.Contains("Pricing unavailable", vm.CompatibilityModels.Single(m => m.Model.Id == "free-model").BillingDisplay);
+        Assert.Contains("Billing multiplier: 1.5×", vm.CompatibilityModels.Single(m => m.Model.Id == "priced-model").BillingDisplay);
+    }
+
+    [Theory]
+    [InlineData("{\"models\":[{\"id\":\"m\",\"billing\":{\"multiplier\":-1}}]}")]
+    [InlineData("{\"models\":[{\"id\":\"m\",\"billing\":{\"multiplier\":1000001}}]}")]
+    [InlineData("{\"models\":[{\"id\":\"m\",\"billing\":{\"tokenPrices\":{\"inputPrice\":1e999}}}]}")]
+    [InlineData("{\"models\":[{\"id\":\"m\",\"billing\":{\"tokenPrices\":{\"outputPrice\":-0.01}}}]}")]
+    [InlineData("{\"models\":[{\"id\":\"m\",\"billing\":{\"tokenPrices\":{\"batchSize\":0}}}]}")]
+    [InlineData("{\"models\":[{\"id\":\"m\",\"billing\":{\"tokenPrices\":{\"batchSize\":12.5}}}]}")]
+    [InlineData("{\"models\":[{\"id\":\"m\",\"billing\":{\"tokenPrices\":{\"longContext\":[]}}}]}")]
+    public void Malformed_model_billing_is_rejected_without_numeric_coercion(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Throws<InvalidOperationException>(() => CopilotMetadataParser.Models(document.RootElement));
+    }
+
+    [Fact]
+    public async Task Tiny_live_rates_are_not_rounded_to_zero_or_persisted_as_review_cost()
+    {
+        using var document = JsonDocument.Parse("""{"models":[{"id":"synthetic","billing":{"multiplier":2,"tokenPrices":{"inputPrice":0.0000001,"outputPrice":0.0000002,"batchSize":1000000}}}]}""");
+        var model = CopilotMetadataParser.Models(document.RootElement).Single(m => m.Id == "synthetic");
+        Assert.Contains("0.0000001", model.Billing!.Display);
+        var record = new ReviewRecord { SchemaVersion = 4, ProjectId = Guid.NewGuid(), Status = ReviewStatus.Completed, RequestedExecution = new(model.Id, "auto"), Usage = new([], 1_000_000_000m, null) };
+        await new ReviewHistoryStore(root).SaveAsync(record);
+        var json = await File.ReadAllTextAsync(Directory.GetFiles(root, "*.json", SearchOption.AllDirectories).Single());
+        Assert.DoesNotContain("inputPrice", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("multiplier", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1m, Assert.Single(await new ReviewHistoryStore(root).LoadAsync(record.ProjectId)).Usage!.AiCredits);
+    }
+
+    [Fact]
+    public void Billing_unit_without_rates_does_not_fabricate_a_zero_price()
+    {
+        using var document = JsonDocument.Parse("""{"models":[{"id":"synthetic","billing":{"tokenPrices":{"batchSize":1000000}}}]}""");
+        var model = CopilotMetadataParser.Models(document.RootElement).Single(m => m.Id == "synthetic");
+        Assert.Contains("Pricing unavailable", model.Billing!.Display);
+        Assert.DoesNotContain("input 0", model.Billing.Display);
+        Assert.Contains("per 1,000,000 tokens", model.Billing.Display);
+    }
+
     [Theory]
     [InlineData("1.0.92", 3)] [InlineData("1.0.91", 4)]
     public void Unsupported_SDK_CLI_combination_is_rejected(string version, int protocol)

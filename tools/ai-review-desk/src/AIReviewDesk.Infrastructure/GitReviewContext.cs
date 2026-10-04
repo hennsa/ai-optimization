@@ -7,7 +7,11 @@ namespace AIReviewDesk.Infrastructure;
 /// <summary>Builds a bounded, secret-screened review context from local Git state.</summary>
 public sealed class GitReviewContext
 {
+    private readonly Func<string, CancellationToken, Task<string>> executionFingerprint;
+    public GitReviewContext() => executionFingerprint = FingerprintAsync;
+    internal GitReviewContext(Func<string, CancellationToken, Task<string>> fingerprint) => executionFingerprint = fingerprint;
     private const int MaxDiffCharacters = 1_500_000;
+    internal const int MaxContextCharacters = 1_600_000;
     private const int MaxUntrackedBytes = 128 * 1024;
 
     public async Task<ReviewInput> PrepareAsync(
@@ -28,9 +32,8 @@ public sealed class GitReviewContext
 
     private async Task<ReviewInput> PrepareCoreAsync(ProjectRegistration project, ReviewScope scope, IReadOnlyList<string>? selectedPaths, CancellationToken ct, bool preview, IProgress<string>? progress)
     {
-        progress?.Report("Fingerprinting repository");
-        var before = await FingerprintAsync(project.RepositoryPath, ct);
-        progress?.Report("Inspecting repository");
+        progress?.Report("Preparing repository");
+        var before = preview ? await PreviewStampAsync(project.RepositoryPath, ct) : await ExecutionFingerprintAsync(project.RepositoryPath, ct, progress);
         var snapshot = await new GitInspector().InspectAsync(project.RepositoryPath, project.DefaultBase, ct);
         var root = Path.GetFullPath(snapshot.RootPath);
         EnsureReviewableSnapshot(snapshot);
@@ -60,8 +63,7 @@ public sealed class GitReviewContext
             ? await BuildBranchContextAsync(root, snapshot, effectivePaths, ct)
             : await BuildWorkingContextAsync(root, effectivePaths, ct, scope == ReviewScope.SelectedPaths);
 
-        progress?.Report("Fingerprinting repository");
-        var after = await FingerprintAsync(root, ct);
+        var after = preview ? await PreviewStampAsync(root, ct) : await ExecutionFingerprintAsync(root, ct, progress);
         if (!string.Equals(before, after, StringComparison.Ordinal))
             throw new PreparationException(PreparationFailure.RepositoryChanged);
 
@@ -73,8 +75,45 @@ public sealed class GitReviewContext
             SelectedPaths = paths,
             Context = context,
             HasReviewableChanges = effectivePaths.Count > 0,
-            Fingerprint = after
+            IsPreview = preview,
+            Fingerprint = preview ? "" : after
         };
+    }
+
+    private async Task<string> ExecutionFingerprintAsync(string root, CancellationToken ct, IProgress<string>? progress)
+    {
+        progress?.Report("Fingerprinting repository");
+        return await executionFingerprint(root, ct);
+    }
+
+    // Advisory consistency only: Git identity/index/status plus changed-file stat
+    // metadata. No whole-repository file-content reads. Same-size/mtime edits may
+    // escape this check; previews never authorize execution.
+    private static async Task<string> PreviewStampAsync(string repository, CancellationToken ct)
+    {
+        var root = (await RunGitAsync(repository, ["rev-parse", "--show-toplevel"], ct)).Trim();
+        var head = await RunGitResultAsync(root, ["rev-parse", "--verify", "HEAD^{commit}"], ct);
+        var headRef = await RunGitResultAsync(root, ["symbolic-ref", "--quiet", "HEAD"], ct);
+        var refs = await RunGitAsync(root, ["for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)", "refs"], ct);
+        var index = await RunGitAsync(root, ["ls-files", "--stage", "-z"], ct);
+        var status = await RunGitAsync(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], ct);
+        var evidence = new StringBuilder();
+        AppendField(evidence, "head", head.StandardOutput);
+        AppendField(evidence, "head-ref", headRef.StandardOutput);
+        AppendField(evidence, "refs", refs);
+        AppendField(evidence, "index", index);
+        AppendField(evidence, "status", status);
+        var entries = status.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < entries.Length; i++)
+        {
+            var entry = entries[i];
+            if (entry.Length < 4) throw new InvalidOperationException("Git returned invalid preview status.");
+            var path = entry[3..];
+            var file = new FileInfo(ResolveSafePath(root, path, allowMissing: true));
+            AppendField(evidence, path, file.Exists ? $"{file.Length}:{file.LastWriteTimeUtc.Ticks}:{file.Attributes}" : "<missing>");
+            if (entry[0] is 'R' or 'C' || entry[1] is 'R' or 'C') i++;
+        }
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(evidence.ToString())));
     }
 
     /// <summary>Lists locally changed paths for the selected scope for use in a path picker.</summary>
@@ -295,7 +334,14 @@ public sealed class GitReviewContext
         var builder = new StringBuilder(header).AppendLine();
         if (!string.IsNullOrWhiteSpace(diff)) builder.AppendLine(diff);
         if (truncated) builder.AppendLine("[Diff context truncated at the application size limit.]");
-        foreach (var item in omitted) builder.AppendLine($"[Untracked content omitted: {item}]");
+        foreach (var item in omitted.Take(100)) builder.AppendLine($"[Untracked content omitted: {item}]");
+        if (omitted.Count > 100) builder.AppendLine($"[{omitted.Count - 100} additional untracked files omitted at the context size limit.]");
+        if (builder.Length > MaxContextCharacters)
+        {
+            builder.Length = MaxContextCharacters - 100;
+            if (char.IsHighSurrogate(builder[^1])) builder.Length--;
+            builder.AppendLine().AppendLine("[Review context truncated at the application size limit.]");
+        }
         return builder.ToString();
     }
 

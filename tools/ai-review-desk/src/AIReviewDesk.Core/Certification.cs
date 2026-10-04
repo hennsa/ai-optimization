@@ -34,6 +34,7 @@ public sealed record ModelCertificate
 
 public sealed record ModelCompatibility(CopilotModelChoice Model, CertificationStatus Status, ModelCertificate? Certificate, string? Reason)
 {
+    public string BillingDisplay => Model.Billing?.Display ?? "Pricing unavailable";
     public override string ToString() => Label;
     public string Label => $"{Model.Name} · {Model.Id} — {StatusLabel}";
     public string StatusLabel => Status switch { CertificationStatus.NeedsRetest => "Needs retest", CertificationStatus.NoLongerAdvertised => "No longer advertised", _ => Status.ToString() };

@@ -84,6 +84,7 @@ public enum ReviewScope
 
 public sealed record ReviewInput
 {
+    public bool IsPreview { get; init; }
     public bool HasReviewableChanges { get; init; }
     public ProjectRegistration Project { get; init; } = new();
     public RepositorySnapshot Snapshot { get; init; } = new();

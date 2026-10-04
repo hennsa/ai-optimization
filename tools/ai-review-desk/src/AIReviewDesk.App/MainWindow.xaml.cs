@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using AIReviewDesk.Core;
+using AIReviewDesk.Infrastructure;
 using Microsoft.Win32;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
@@ -12,13 +13,16 @@ namespace AIReviewDesk.App;
 public partial class MainWindow : FluentWindow
 {
     public DeskViewModel ViewModel { get; }
+    private readonly RegistryLoadResult? startupState;
     private bool initialized;
     private bool closeAfterCompatibility;
 
-    public MainWindow(string? dataDirectory = null)
+    public MainWindow(string? dataDirectory = null, RegistryLoadResult? startupState = null)
     {
+        this.startupState = startupState;
         ViewModel = new DeskViewModel(dataDirectory);
         InitializeComponent();
+        ContentRendered += OnContentRendered;
         DataContext = ViewModel;
         ViewModel.PropertyChanged += (_, change) =>
         {
@@ -38,7 +42,7 @@ public partial class MainWindow : FluentWindow
         base.OnClosing(e);
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ScopePicker.ItemsSource = new[]
         {
@@ -52,8 +56,13 @@ public partial class MainWindow : FluentWindow
         // Restore the current value without replacing the binding used by setup reuse.
         ScopePicker.SetCurrentValue(ComboBox.SelectedValueProperty, ViewModel.Scope);
         ProfileDetails.SelectedIndex = 0;
-        await ViewModel.ExecuteAsync(ViewModel.InitializeAsync);
-        ApplyTheme();
+    }
+
+    private async void OnContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= OnContentRendered;
+        StartupDiagnostics.Mark("first window content rendered");
+        await ViewModel.InitializeAsync(startupState);
         initialized = true;
     }
 
@@ -135,7 +144,13 @@ public partial class MainWindow : FluentWindow
         if (!string.IsNullOrWhiteSpace(prompt)) new PromptPreviewWindow(prompt, ViewModel.ExecutionDisplay) { Owner = this }.ShowDialog();
     }
 
-    private async void OnStartReview(object sender, RoutedEventArgs e) => await ViewModel.StartReviewAsync(CurrentScope(), SelectedPaths());
+    private void OnStartReview(object sender, RoutedEventArgs e)
+    {
+        var scope = CurrentScope(); var paths = SelectedPaths();
+        var context = $"{ViewModel.ExecutionDisplay}\nProfiles: {string.Join(", ", ViewModel.ProfileChoices.Where(p => p.IsSelected).Select(p => p.Profile.Name))}\nScope: {scope}";
+        var operation = new OperationProgress("Review progress", ViewModel.Selected?.DisplayName ?? "Review", context, ViewModel.CancelReview, transitionOnSuccess: true);
+        new OperationProgressWindow(operation, () => ViewModel.StartReviewAsync(scope, paths, operation)) { Owner = this }.ShowDialog();
+    }
     private void OnCancelReview(object sender, RoutedEventArgs e) => ViewModel.CancelReview();
 
     private void OnCopyResult(object sender, RoutedEventArgs e) => CopyHandoff(ViewModel.LatestReview, HandoffFormatter.FormatResult);
@@ -159,7 +174,13 @@ public partial class MainWindow : FluentWindow
         if (System.Windows.MessageBox.Show(this,
             $"Test {model.Model.Name} in a disposable AI Review Desk fixture?\n\nThis makes small Copilot model calls and can consume account allowance. Exact cost is not known beforehand. Your project defaults will stay as they are.",
             model.TestLabel, System.Windows.MessageBoxButton.OKCancel, MessageBoxImage.Information, System.Windows.MessageBoxResult.Cancel) == System.Windows.MessageBoxResult.OK)
-            await ViewModel.TestCompatibilityAsync(model);
+        {
+            var effort = model.Model.Efforts.Contains("high") ? "high" : model.Model.Efforts.First();
+            var operation = new OperationProgress("Model compatibility", model.Model.Name, $"Reasoning: {CopilotModelPolicy.EffortName(effort)}\nDisposable certification fixture", ViewModel.CancelCompatibility);
+            new OperationProgressWindow(operation, () => ViewModel.TestCompatibilityAsync(model, operation)) { Owner = this }.ShowDialog();
+            // Refresh current Settings only after the final modal result was read/closed.
+            await ViewModel.RefreshAccountAsync();
+        }
     }
     private void OnCancelCompatibility(object sender, RoutedEventArgs e) => ViewModel.CancelCompatibility();
     private async void OnSignIn(object sender, RoutedEventArgs e) => await ViewModel.SignInAsync();
@@ -183,7 +204,10 @@ public partial class MainWindow : FluentWindow
     private async void OnProjectSelected(object sender, SelectionChangedEventArgs e)
     {
         if (ViewModel.Interactive && e.AddedItems.Count > 0 && e.AddedItems[0] is ProjectRegistration project && project.Id != ViewModel.Selected?.Id)
-            await ViewModel.ExecuteAsync(() => ViewModel.SelectAsync(project));
+        {
+            try { await ViewModel.SelectAsync(project); }
+            catch (Exception ex) when (ex is not OutOfMemoryException) { ViewModel.SetError(ex.Message); }
+        }
     }
 
     private async void OnAdd(object sender, RoutedEventArgs e)
@@ -298,12 +322,7 @@ public partial class MainWindow : FluentWindow
 
     private void ApplyTheme()
     {
-        SystemThemeWatcher.UnWatch(this);
-        if (ViewModel.State.Theme == "System")
-        {
-            ApplicationThemeManager.ApplySystemTheme();
-            SystemThemeWatcher.Watch(this);
-        }
-        else ApplicationThemeManager.Apply(ViewModel.State.Theme == "Dark" ? ApplicationTheme.Dark : ApplicationTheme.Light);
+        if (Application.Current is App app)
+            app.ApplyTheme(ViewModel.State.Theme);
     }
 }

@@ -78,7 +78,7 @@
         <ui:Button Content="Remove project" Click="OnRemove" Margin="0,0,0,6" />
        </WrapPanel>
        <Border Style="{StaticResource Card}" Visibility="{Binding SnapshotUnavailable, Converter={StaticResource BoolVisibility}}">
-        <StackPanel><TextBlock Text="Repository state unavailable" Style="{StaticResource SectionTitle}" /><TextBlock Text="Check the message above, then refresh to try again. You can still edit defaults or remove this registration." Style="{StaticResource Caption}" /></StackPanel>
+        <StackPanel><TextBlock Text="{Binding RepositoryStatus}" Style="{StaticResource SectionTitle}" /><TextBlock Text="Check the message above, then refresh to try again. You can still edit defaults or remove this registration." Style="{StaticResource Caption}" /></StackPanel>
        </Border>
        <StackPanel Visibility="{Binding HasSnapshot, Converter={StaticResource BoolVisibility}}">
         <Border Style="{StaticResource Card}">
@@ -152,7 +152,7 @@
       <TextBlock Text="{Binding ReviewProgress}" Style="{StaticResource Caption}" Margin="0,0,0,12" />
       <StackPanel Visibility="{Binding ShowHistoryList, Converter={StaticResource BoolVisibility}}">
       <TextBlock Text="Recent reviews" Style="{StaticResource SectionTitle}" Margin="0,0,0,8" />
-      <TextBlock Text="No reviews yet. Choose New review to prepare an independent review for this project." TextWrapping="Wrap" Margin="0,8,0,16" Visibility="{Binding EmptyHistory, Converter={StaticResource BoolVisibility}}" />
+      <TextBlock Text="{Binding HistoryStatus}" TextWrapping="Wrap" Margin="0,8,0,16" Visibility="{Binding EmptyHistory, Converter={StaticResource BoolVisibility}}" />
       <ListBox x:Name="HistoryList" ItemsSource="{Binding ReviewHistory}" SelectionChanged="OnHistorySelected" MaxHeight="500" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" Margin="0,0,0,16">
        <ListBox.ItemTemplate><DataTemplate>
         <StackPanel Margin="4,6">
@@ -278,6 +278,7 @@
       <Border Style="{StaticResource Card}"><StackPanel>
        <TextBlock Text="Model compatibility" Style="{StaticResource SectionTitle}" />
        <TextBlock Text="Live discovery describes account availability. Only valid certified models can review projects. Testing makes small Copilot calls and can consume account allowance; exact cost is not known beforehand." Style="{StaticResource Caption}" />
+       <TextBlock Text="Current model rates come from live Copilot metadata and can change. Rates and multipliers are not an exact review cost. Account allowance is shown above; completed reviews record actual emitted usage separately." Style="{StaticResource Caption}" Margin="0,6,0,0" />
        <TextBlock Text="{Binding CompatibilityProgress}" TextWrapping="Wrap" Margin="0,8" />
        <ui:Button Content="Cancel compatibility test" Click="OnCancelCompatibility" Visibility="{Binding IsCompatibilityTesting, Converter={StaticResource BoolVisibility}}" />
        <TextBlock Text="{Binding CompatibilityResult}" TextWrapping="Wrap" Margin="0,8" />
@@ -285,6 +286,7 @@
         <StackPanel Margin="0,12,0,0">
          <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
          <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" />
+         <TextBlock Text="{Binding BillingDisplay}" TextWrapping="Wrap" Style="{StaticResource Caption}" Margin="0,4,0,0" />
          <ui:Button Content="{Binding TestLabel}" IsEnabled="{Binding CanTest}" Tag="{Binding}" Click="OnTestCompatibility" HorizontalAlignment="Left" Margin="0,6" />
          <Expander Header="Certification evidence"><TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" /></Expander>
         </StackPanel>

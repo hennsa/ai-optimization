@@ -17,7 +17,7 @@ public sealed partial class CopilotService
         var probes = new List<CertificationProbe>(); var usages = new List<ReviewUsage>(); var outputs = new List<OutputEnvelopeObservation>();
         try
         {
-            progress?.Report("Refreshing live discovery (no model call)");
+            progress?.Report("Validating environment and live discovery (no model call)");
             var account = await GetAccountAsync(ct);
             if (!account.Supported || account.ConfigurationBlocked) throw new ReviewValidationException("Copilot security preflight is unavailable or blocked.");
             var metadata = await GetMetadataAsync(ct);
@@ -25,6 +25,7 @@ public sealed partial class CopilotService
             if (!live.Efforts.Contains(effort)) throw new ReviewValidationException("The requested reasoning level is not advertised.");
             certificate = certificate with { DisplayName = live.Name, CliVersion = account.Version! };
             await registry.SaveAsync(certificate, ct);
+            progress?.Report("Preparing disposable fixture");
             await using var fixture = await CertificationFixture.CreateAsync(dataDirectory, ct);
             var expected = previous?.ExpectedTools.Length == 3 && previous.ExpectedTools.All(t => CertificationContract.ToolCertified(certificate.CliVersion, t, CertificationContract.BundledTools))
                 ? previous.ExpectedTools : CopilotContract.AllowedTools;
@@ -97,6 +98,7 @@ public sealed partial class CopilotService
             // Only fixed application diagnostics are persisted; never arbitrary CLI output, fixture contents or paths.
             certificate = certificate with { Status = CertificationStatus.Rejected, FailureReason = ex is ReviewValidationException ? ex.Message : "Compatibility testing could not complete under the production security contract." };
         }
+        progress?.Report("Finalizing certification");
         certificate = certificate with { Probes = probes.ToArray(), Usage = TotalUsage(usages), EnvelopeObservations = outputs.ToArray() };
         await registry.SaveAsync(certificate, CancellationToken.None);
         progress?.Report(certificate.Status == CertificationStatus.Certified ? "Certified; available for new reviews" : "Not certified; see compatibility evidence");
@@ -126,10 +128,10 @@ public sealed partial class CopilotService
             if (CopilotPreflight.Inspect(Profile, run, fixture.Repository) != configuration) throw new InvalidOperationException();
             CopilotGitHubCliIsolation.Inspect(installation, run);
             launchedOwnedSession = true;
-            var process = await CopilotProcess.RunAsync(info, PromptComposer.Compose(input, ["standard"]), line =>
+            var process = await CopilotProcess.RunFramesAsync(info, PromptComposer.Compose(input, ["standard"]), frame =>
             {
-                validator.Accept(line);
-                if (cancelProbe && line.Contains("\"session.tools_updated\"", StringComparison.Ordinal)) timeout.Cancel();
+                validator.AcceptFrame(frame);
+                if (cancelProbe && frame.Span.IndexOf("\"session.tools_updated\""u8) >= 0) timeout.Cancel();
             }, timeout.Token);
             result = validator.Complete(process.ExitCode, process.Cancelled);
         }

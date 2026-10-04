@@ -126,6 +126,7 @@ public sealed partial class CopilotService
     public async Task<ReviewRecord> RunAsync(ReviewInput input, IEnumerable<string> profileIds, IProgress<string>? progress = null, CancellationToken cancellationToken = default, ReviewExecutionSettings? execution = null)
     {
         if (!input.HasReviewableChanges) throw new ReviewValidationException("The selected scope has no changes to review. Preview remains available.");
+        if (input.IsPreview) throw new ReviewValidationException("Preview cannot authorize execution. Prepare the repository afresh before starting.");
         var ids = profileIds.ToArray();
         var prompt = PromptComposer.Compose(input, ids);
         var profiles = BuiltInProfiles.All.Where(p => ids.Contains(p.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
@@ -172,7 +173,7 @@ public sealed partial class CopilotService
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromMinutes(3));
             progress?.Report("Reviewing");
-            var process = await CopilotProcess.RunAsync(info, prompt, validator.Accept, timeout.Token);
+            var process = await CopilotProcess.RunFramesAsync(info, prompt, validator.AcceptFrame, timeout.Token);
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report("Validating result");
             var after = await integrity.FingerprintAsync(input.Project.RepositoryPath, cancellationToken);

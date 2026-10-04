@@ -10,7 +10,58 @@ public sealed record ReviewExecutionSettings(string ModelId = "auto", string Rea
     [JsonIgnore] public string Display => $"Model: {CopilotModelPolicy.DisplayName(ModelId)}\nReasoning: {CopilotModelPolicy.EffortName(ReasoningEffort)}";
 }
 
-public sealed record CopilotModelChoice(string Id, string Name, IReadOnlyList<string> Efforts);
+public sealed record CopilotModelChoice(string Id, string Name, IReadOnlyList<string> Efforts, CopilotModelBilling? Billing = null);
+
+/// <summary>Current billing metadata advertised for a model by the Copilot metadata RPC.</summary>
+public sealed record CopilotModelBilling(decimal? Multiplier, CopilotTokenPrices? TokenPrices)
+{
+    public string Display
+    {
+        get
+        {
+            var details = new List<string>();
+            if (Multiplier is decimal multiplier) details.Add($"Billing multiplier: {multiplier.ToString("0.############################", System.Globalization.CultureInfo.InvariantCulture)}×");
+            if (TokenPrices is { } prices) details.Add(prices.Display);
+            return details.Count == 0 ? "Pricing unavailable" : string.Join(" · ", details);
+        }
+    }
+}
+
+/// <summary>Advertised AI-credit cost for a standard token billing batch.</summary>
+public sealed record CopilotTokenPrices(decimal? InputPrice, decimal? OutputPrice, decimal? CacheReadPrice,
+    decimal? CacheWritePrice, decimal? CacheWrite1hPrice, long? BatchSize, CopilotLongContextPrices? LongContext)
+{
+    public string Display
+    {
+        get
+        {
+            var unit = BatchSize is long count ? $"AI credits per {count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} tokens" : "AI credits per batch";
+            var rates = new[]
+            {
+                Rate("input", InputPrice, unit), Rate("output", OutputPrice, unit), Rate("cache read", CacheReadPrice, unit),
+                Rate("cache write", CacheWritePrice, unit), Rate("1h cache write", CacheWrite1hPrice, unit)
+            }.Where(value => value != null).ToList();
+            var result = rates.Count == 0 ? $"Pricing unavailable (billing unit: {unit})" : string.Join(", ", rates);
+            if (LongContext is { } extended) result += $" · Long context: {extended.Display}";
+            return result;
+        }
+    }
+
+    private static string? Rate(string name, decimal? value, string unit) => value is decimal amount
+        ? $"{name} {amount.ToString("0.############################", System.Globalization.CultureInfo.InvariantCulture)} {unit}" : null;
+}
+
+public sealed record CopilotLongContextPrices(decimal? InputPrice, decimal? OutputPrice, decimal? CacheReadPrice,
+    decimal? CacheWritePrice, decimal? CacheWrite1hPrice)
+{
+    public string Display => string.Join(", ", new[]
+    {
+        Rate("input", InputPrice), Rate("output", OutputPrice), Rate("cache read", CacheReadPrice),
+        Rate("cache write", CacheWritePrice), Rate("1h cache write", CacheWrite1hPrice)
+    }.Where(value => value != null));
+    private static string? Rate(string name, decimal? value) => value is decimal amount
+        ? $"{name} {amount.ToString("0.############################", System.Globalization.CultureInfo.InvariantCulture)} AI credits/batch" : null;
+}
 
 /// <summary>Windows CLI 1.0.91 models verified against the exact production tool contract.</summary>
 public static class CopilotModelPolicy

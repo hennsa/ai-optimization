@@ -30,11 +30,17 @@ public sealed class CopilotStreamValidator
     public string? Model { get; private set; }
 
     public void Accept(string line)
+        => AcceptDocument(() => JsonDocument.Parse(line));
+
+    public void AcceptFrame(ReadOnlyMemory<byte> frame)
+        => AcceptDocument(() => JsonDocument.Parse(frame));
+
+    private void AcceptDocument(Func<JsonDocument> parse)
     {
         if (invalid != null) return;
         try
         {
-            using var document = JsonDocument.Parse(line);
+            using var document = parse();
             var root = document.RootElement;
             RequireUniqueProperties(root);
             var type = Text(root, "type") ?? throw new InvalidOperationException("Protocol frame has no event type.");

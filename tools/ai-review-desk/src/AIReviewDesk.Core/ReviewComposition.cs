@@ -41,7 +41,7 @@ public static class PromptComposer
 
         var metadata = $"Project: {input.Project.DisplayName}\nRepository: {input.Project.RepositoryPath}\nBranch: {input.Snapshot.Branch}\n" +
             $"HEAD: {input.Snapshot.HeadSha ?? "unavailable"}\nBase: {input.Snapshot.BaseRef ?? input.Project.DefaultBase ?? "unavailable"}\n" +
-            $"Merge base: {input.Snapshot.MergeBaseSha ?? "unavailable"}\nTracked changes: {input.Snapshot.TrackedChangedCount}\nUntracked files: {input.Snapshot.UntrackedCount}\nFingerprint: {input.Fingerprint}";
+            $"Merge base: {input.Snapshot.MergeBaseSha ?? "unavailable"}\nTracked changes: {input.Snapshot.TrackedChangedCount}\nUntracked files: {input.Snapshot.UntrackedCount}\nFingerprint: {(input.IsPreview ? "Not captured for preview; repository revalidated at review start" : input.Fingerprint)}";
         AppendSection(builder, "Repository and project snapshot", metadata);
 
         var scope = input.Scope switch

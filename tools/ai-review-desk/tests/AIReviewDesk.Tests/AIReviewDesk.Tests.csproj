@@ -17,6 +17,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\src\AIReviewDesk.App\DeskViewModel.cs" Link="DeskViewModel.cs" />
+    <Compile Include="..\..\src\AIReviewDesk.App\OperationProgress.cs" Link="OperationProgress.cs" />
+    <Compile Include="..\..\src\AIReviewDesk.App\StartupDiagnostics.cs" Link="StartupDiagnostics.cs" />
     <ProjectReference Include="..\..\src\AIReviewDesk.Core\AIReviewDesk.Core.csproj" />
     <ProjectReference Include="..\..\src\AIReviewDesk.Infrastructure\AIReviewDesk.Infrastructure.csproj" />
   </ItemGroup>

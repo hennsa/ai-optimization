@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using AIReviewDesk.Core;
@@ -10,14 +11,23 @@ namespace AIReviewDesk.App;
 public sealed class DeskViewModel : ObservableObject
 {
     private readonly RegistryStore store;
-    private readonly GitInspector git = new();
+    private readonly GitInspector git;
     private readonly CopilotService copilot;
     private readonly ReviewHistoryStore history;
+    private readonly Func<ProjectRegistration, Task<RepositorySnapshot>> inspectProject;
+    private readonly Func<Guid, Task<IReadOnlyList<ReviewRecord>>> loadProjectHistory;
+    private readonly Func<Task> refreshAccount;
     private AppState state = new();
     private ProjectRegistration? selected;
     private RepositorySnapshot? snapshot;
     private string area = "Projects", notice = "", error = "", refreshed = "";
     private bool busy, ready;
+    private bool repositoryLoading, historyLoading;
+    private int refreshGeneration;
+    private int historyGeneration;
+    private int selectionIntentGeneration;
+    private int accountHydrationGeneration;
+    private readonly SemaphoreSlim selectionPersistLock = new(1, 1);
     private bool isSelectedPaths;
     private ReviewScope scope = ReviewScope.WorkingChanges;
     private ReviewProfile? selectedProfile;
@@ -37,12 +47,25 @@ public sealed class DeskViewModel : ObservableObject
     private CopilotMetadata metadata = CopilotMetadata.Unavailable;
     private readonly ObservableCollection<EffortChoice> effortChoices = new(CopilotModelPolicy.Efforts(CopilotModelPolicy.Default.ModelId).Select(e => new EffortChoice(e, CopilotModelPolicy.EffortName(e))));
 
-    public DeskViewModel(string? dataDirectory = null)
+    public DeskViewModel(
+        string? dataDirectory = null,
+        Func<ProjectRegistration, Task<RepositorySnapshot>>? projectInspector = null,
+        Func<Guid, Task<IReadOnlyList<ReviewRecord>>>? historyLoader = null,
+        Func<Task>? accountRefresher = null)
     {
         store = new RegistryStore(dataDirectory);
         history = new ReviewHistoryStore(dataDirectory);
         copilot = new CopilotService(dataDirectory);
+        git = new GitInspector();
+        inspectProject = projectInspector ?? (project => git.InspectAsync(project.RepositoryPath, project.DefaultBase));
+        loadProjectHistory = historyLoader ?? (projectId => history.LoadAsync(projectId));
+        refreshAccount = accountRefresher ?? RefreshStartupCopilotAccountAsync;
+        ReviewRunner = copilot.RunAsync;
+        CertificationRunner = copilot.TestCompatibilityAsync;
     }
+
+    internal Func<ReviewInput, IEnumerable<string>, IProgress<string>?, CancellationToken, ReviewExecutionSettings?, Task<ReviewRecord>> ReviewRunner { get; set; }
+    internal Func<string, string, IProgress<string>?, CancellationToken, Task<ModelCertificate>> CertificationRunner { get; set; }
 
     public ObservableCollection<ProjectRegistration> Projects { get; } = [];
     public IReadOnlyList<CopilotModelChoice> Models => models;
@@ -105,7 +128,7 @@ public sealed class DeskViewModel : ObservableObject
     public string CompatibilityResult { get => compatibilityResult; private set => SetProperty(ref compatibilityResult, value); }
     public string CompatibilityPolicy => CertificationContract.Policy;
     public void CancelCompatibility() => compatibilityCancellation?.Cancel();
-    public async Task TestCompatibilityAsync(ModelCompatibility model)
+    public async Task TestCompatibilityAsync(ModelCompatibility model, OperationProgress? operation = null)
     {
         if (IsCompatibilityTesting || !Interactive || !model.CanTest) return;
         compatibilityCancellation = new(); OnPropertyChanged(nameof(IsCompatibilityTesting));
@@ -114,13 +137,13 @@ public sealed class DeskViewModel : ObservableObject
         try
         {
             var effort = model.Model.Efforts.Contains("high") ? "high" : model.Model.Efforts.First();
-            var result = await copilot.TestCompatibilityAsync(model.Model.Id, effort, new Progress<string>(s => CompatibilityProgress = s), compatibilityCancellation.Token);
+            var result = await CertificationRunner(model.Model.Id, effort, new Progress<string>(s => { CompatibilityProgress = s; operation?.Report(s); }), compatibilityCancellation.Token);
             CompatibilityResult = $"{result.DisplayName} — {(result.Status == CertificationStatus.Certified ? "Certified" : "Not certified")}\n" +
-                (result.FailureReason ?? $"CLI {result.CliVersion} · reasoning: {string.Join(", ", result.ReasoningEfforts)} · tools: {string.Join(", ", result.ExpectedTools)}") +
+                (result.FailureReason ?? $"CLI {result.CliVersion} · reasoning: {string.Join(", ", result.ReasoningEfforts)} · tools: {string.Join(", ", result.ExpectedTools)} · output: {result.OutputEnvelopeId}") +
                 (result.Usage == null ? "\nUsage unavailable for interrupted or failed calls." : "\nRecorded completed-call usage (interrupted calls may be absent):\n" + result.Usage.Display);
-            SetMetadata(await copilot.GetMetadataAsync());
+            operation?.Complete(result.Status == CertificationStatus.Certified ? "Certified" : result.Status == CertificationStatus.NeedsRetest ? "Cancelled" : "Rejected", CompatibilityResult);
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Error = "Compatibility testing could not complete safely."; operation?.Complete("Failed", Error); }
         finally { compatibilityCancellation.Dispose(); compatibilityCancellation = null; OnPropertyChanged(nameof(IsCompatibilityTesting)); }
     }
     public IReadOnlyList<ReviewProfile> Profiles => BuiltInProfiles.All;
@@ -148,7 +171,26 @@ public sealed class DeskViewModel : ObservableObject
     public ReviewDetails? Details => HasReviewResult ? new(LatestReview!) : null;
     public string DataDirectory => store.DirectoryPath;
     public AppState State => state;
-    public ProjectRegistration? Selected { get => selected; private set { if (SetProperty(ref selected, value)) ResetReviewWorkspace(); NotifyView(); } }
+    public ProjectRegistration? Selected
+    {
+        get => selected;
+        private set
+        {
+            if (SetProperty(ref selected, value))
+            {
+                refreshGeneration++;
+                historyGeneration++;
+                repositoryLoading = false;
+                historyLoading = false;
+                OnPropertyChanged(nameof(RepositoryLoading));
+                OnPropertyChanged(nameof(RepositoryStatus));
+                OnPropertyChanged(nameof(HistoryLoading));
+                OnPropertyChanged(nameof(HistoryStatus));
+                ResetReviewWorkspace();
+            }
+            NotifyView();
+        }
+    }
     public RepositorySnapshot? Snapshot { get => snapshot; private set { SetProperty(ref snapshot, value); NotifyView(); } }
     public string Area { get => area; set { SetProperty(ref area, value); NotifyView(); } }
     public string Notice { get => notice; private set { SetProperty(ref notice, value); OnPropertyChanged(nameof(HasNotice)); } }
@@ -185,6 +227,10 @@ public sealed class DeskViewModel : ObservableObject
     public bool Empty => Selected == null;
     public bool HasSnapshot => Snapshot != null;
     public bool SnapshotUnavailable => Selected != null && Snapshot == null;
+    public bool RepositoryLoading => repositoryLoading;
+    public bool HistoryLoading => historyLoading;
+    public string RepositoryStatus => repositoryLoading ? "Checking local repository state…" : "Repository state is unavailable.";
+    public string HistoryStatus => historyLoading ? "Loading review history…" : "No reviews yet. Choose New review to prepare an independent review for this project.";
     public bool HasBaseWarning => !string.IsNullOrWhiteSpace(Snapshot?.BaseWarning);
     public string WorkingState => Snapshot == null ? "Unavailable" : Snapshot.ConflictCount > 0 ? "Conflicts need attention" : Snapshot.IsClean ? "Working tree clean" : "Working changes";
     public string BaseLabel => Snapshot?.BaseRef ?? Selected?.DefaultBase ?? "No base selected";
@@ -214,67 +260,158 @@ public sealed class DeskViewModel : ObservableObject
         finally { Busy = false; }
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(RegistryLoadResult? preloaded = null)
     {
-        var loaded = await store.LoadAsync();
+        var timer = Stopwatch.StartNew();
+        var loaded = preloaded ?? await store.LoadAsync();
+        StartupDiagnostics.Measure("registry-loaded", timer);
         state = loaded.State;
         Notice = loaded.Warning ?? "";
+        var projectsTimer = Stopwatch.StartNew();
         foreach (var project in state.Projects) Projects.Add(project);
+        StartupDiagnostics.Measure($"projects-restored ({Projects.Count})", projectsTimer);
         Selected = Projects.FirstOrDefault(p => p.Id == state.SelectedProjectId) ?? Projects.FirstOrDefault();
         ready = true;
         RebuildProfileChoices(state.DefaultProfileIds ?? [state.DefaultProfileId]);
         LoadProjectProfiles(Selected);
         OnPropertyChanged(nameof(Interactive));
-        if (Selected != null) { await LoadHistoryAsync(Selected.Id); await RefreshAsync(); }
-        await RefreshAccountAsync();
+        StartupDiagnostics.Mark("persisted shell state ready");
+
+        // The shell becomes interactive as soon as local preferences are available. Repository,
+        // history and account metadata have independent waits and may finish in any order.
+        var hydrationTimer = Stopwatch.StartNew();
+        var hydrationTasks = new List<Task>();
+        if (Selected != null) hydrationTasks.Add(StartProjectHydration(Selected));
+        hydrationTasks.Add(RefreshStartupAccountAsync());
+        _ = LogStartupHydrationCompletionAsync(Task.WhenAll(hydrationTasks), hydrationTimer);
     }
 
     public async Task SelectAsync(ProjectRegistration project)
     {
-        await PersistAsync(state with { SelectedProjectId = project.Id });
+        var intent = Interlocked.Increment(ref selectionIntentGeneration);
+        if (!await PersistSelectionAsync(project.Id, intent) || intent != Volatile.Read(ref selectionIntentGeneration)) return;
         Selected = project;
         Area = "Projects";
         LoadProjectProfiles(project);
-        await LoadHistoryAsync(project.Id);
-        await RefreshAsync();
+        await StartProjectHydration(project);
     }
 
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
     {
-        Snapshot = null;
-        Refreshed = "";
-        if (Selected == null) return;
-        Snapshot = await git.InspectAsync(Selected.RepositoryPath, Selected.DefaultBase);
-        Refreshed = $"Checked {DateTime.Now:t} · Local Git state · No remote fetch";
+        var project = Selected;
+        return project == null ? Task.CompletedTask : RefreshProjectAsync(project, null);
+    }
+
+    private async Task RefreshProjectAsync(ProjectRegistration project, Func<bool>? completionAllowed, bool clearSnapshotAtStart = true)
+    {
+        var generation = ++refreshGeneration;
+        bool MayApply() => Selected?.Id == project.Id && generation == refreshGeneration && (completionAllowed?.Invoke() ?? true);
+        var previousRefreshed = Refreshed;
+        repositoryLoading = true;
+        OnPropertyChanged(nameof(RepositoryLoading));
+        OnPropertyChanged(nameof(RepositoryStatus));
+        if (clearSnapshotAtStart) Snapshot = null;
+        Refreshed = "Checking local repository state…";
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            var result = await Task.Run(() => inspectProject(project));
+            if (!MayApply()) return;
+            Snapshot = result;
+            Refreshed = $"Checked {DateTime.Now:t} · Local Git state · No remote fetch";
+            StartupDiagnostics.Measure("git inspection complete", timer);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (MayApply())
+            {
+                Error = ex.Message;
+                Refreshed = "Repository state could not be loaded.";
+            }
+        }
+        finally
+        {
+            if (Selected?.Id == project.Id && generation == refreshGeneration)
+            {
+                if (!(completionAllowed?.Invoke() ?? true)) Refreshed = previousRefreshed;
+                repositoryLoading = false;
+                OnPropertyChanged(nameof(RepositoryLoading));
+                OnPropertyChanged(nameof(RepositoryStatus));
+            }
+        }
     }
 
     public async Task RefreshOnActivateAsync()
     {
-        if (activationRefreshRunning || Busy || IsReviewRunning || !ready || !state.RefreshOnActivate || Selected == null || HasError)
+        if (activationRefreshRunning || repositoryLoading || Busy || IsReviewRunning || !ready || !state.RefreshOnActivate || Selected == null || HasError)
             return;
 
-        var capturedProject = Selected;
+        var capturedProject = Selected!;
         activationRefreshRunning = true;
         try
         {
             // Activation refresh is deliberately outside ExecuteAsync: it must not disable
             // the workspace while a user is clicking a native modal control such as Add.
-            var refreshedSnapshot = await git.InspectAsync(capturedProject.RepositoryPath, capturedProject.DefaultBase);
-            if (!ReferenceEquals(Selected, capturedProject) || Busy || IsReviewRunning)
-                return;
-
-            Snapshot = refreshedSnapshot;
-            Refreshed = $"Checked {DateTime.Now:t} · Local Git state · No remote fetch";
+            await RefreshProjectAsync(capturedProject, () => !Busy && !IsReviewRunning, clearSnapshotAtStart: false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            if (ReferenceEquals(Selected, capturedProject) && !Busy && !IsReviewRunning && !HasError)
+            if (!Busy && !IsReviewRunning && !HasError)
                 Error = ex.Message;
         }
         finally
         {
             activationRefreshRunning = false;
         }
+    }
+
+    private Task StartProjectHydration(ProjectRegistration project)
+    {
+        if (Selected?.Id != project.Id) return Task.CompletedTask;
+        historyLoading = true;
+        OnPropertyChanged(nameof(HistoryLoading));
+        OnPropertyChanged(nameof(HistoryStatus));
+        return Task.WhenAll(LoadHistoryAsync(project.Id), RefreshAsync());
+    }
+
+    private async Task RefreshStartupAccountAsync()
+    {
+        var generation = Volatile.Read(ref accountHydrationGeneration);
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            await refreshAccount();
+            StartupDiagnostics.Measure("account and metadata hydration complete", timer);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (generation == Volatile.Read(ref accountHydrationGeneration))
+            {
+                AccountStatus = "Copilot status unavailable";
+                AccountDetail = "Copilot account metadata could not be loaded. Refresh to try again.";
+            }
+            StartupDiagnostics.Measure("account and metadata hydration unavailable", timer);
+        }
+    }
+
+    private static async Task LogStartupHydrationCompletionAsync(Task hydration, Stopwatch timer)
+    {
+        await hydration;
+        StartupDiagnostics.Measure("initial hydration complete", timer);
+    }
+
+    private async Task RefreshStartupCopilotAccountAsync()
+    {
+        var generation = Volatile.Read(ref accountHydrationGeneration);
+        var accountTimer = Stopwatch.StartNew();
+        var account = await Task.Run(() => copilot.GetAccountAsync());
+        if (generation == Volatile.Read(ref accountHydrationGeneration)) SetAccount(account);
+        StartupDiagnostics.Measure("account status loaded", accountTimer);
+
+        var metadataTimer = Stopwatch.StartNew();
+        var result = await Task.Run(() => copilot.GetMetadataAsync());
+        if (generation == Volatile.Read(ref accountHydrationGeneration)) SetMetadata(result);
+        StartupDiagnostics.Measure("model metadata loaded", metadataTimer);
     }
 
     public async Task<RepositorySnapshot> DetectAsync(string path)
@@ -287,34 +424,39 @@ public sealed class DeskViewModel : ObservableObject
 
     public async Task SaveProjectAsync(ProjectRegistration project, bool adding)
     {
-        var projects = state.Projects.ToList();
-        if (adding) projects.Add(project);
-        else projects[projects.FindIndex(p => p.Id == project.Id)] = project;
-        await PersistAsync(state with { Projects = projects, SelectedProjectId = project.Id });
+        await PersistAsync(current =>
+        {
+            var projects = current.Projects.ToList();
+            if (adding) projects.Add(project);
+            else projects[projects.FindIndex(p => p.Id == project.Id)] = project;
+            return current with { Projects = projects, SelectedProjectId = project.Id };
+        });
         if (adding) Projects.Add(project);
         else Projects[Projects.IndexOf(Projects.First(p => p.Id == project.Id))] = project;
         Selected = project;
         Area = "Projects";
         LoadProjectProfiles(project);
-        await LoadHistoryAsync(project.Id);
-        await RefreshAsync();
+        await StartProjectHydration(project);
     }
 
     public async Task RemoveAsync()
     {
         if (Selected == null) return;
         var removed = Selected;
-        var remaining = state.Projects.Where(p => p.Id != removed.Id).ToList();
-        await PersistAsync(state with { Projects = remaining, SelectedProjectId = remaining.FirstOrDefault()?.Id });
+        await PersistAsync(current =>
+        {
+            var remaining = current.Projects.Where(p => p.Id != removed.Id).ToList();
+            return current with { Projects = remaining, SelectedProjectId = remaining.FirstOrDefault()?.Id };
+        });
         Projects.Remove(removed);
         Selected = Projects.FirstOrDefault();
         LoadProjectProfiles(Selected);
         Snapshot = null;
-        if (Selected != null) { await LoadHistoryAsync(Selected.Id); await RefreshAsync(); }
+        if (Selected != null) await StartProjectHydration(Selected);
     }
 
     public Task SaveSettingsAsync(string theme, bool refresh) =>
-        PersistAsync(state with { Theme = theme, DefaultProfileIds = SelectedDefaultProfileIds().ToList(), RefreshOnActivate = refresh });
+        PersistAsync(current => current with { Theme = theme, DefaultProfileIds = SelectedDefaultProfileIds().ToList(), RefreshOnActivate = refresh });
 
     public void LoadProjectProfiles(ProjectRegistration? project)
     {
@@ -384,7 +526,7 @@ public sealed class DeskViewModel : ObservableObject
     public void SetReviewProgress(string value) => ReviewProgress = value;
     public void SetError(string value) => Error = value;
 
-    public async Task StartReviewAsync(ReviewScope forScope, IReadOnlyList<string> selectedPaths)
+    public async Task StartReviewAsync(ReviewScope forScope, IReadOnlyList<string> selectedPaths, OperationProgress? operation = null)
     {
         if (reviewCancellation != null || IsCompatibilityTesting) return;
         Error = "";
@@ -403,17 +545,18 @@ public sealed class DeskViewModel : ObservableObject
             if (profileIds.Count == 0) throw new ReviewValidationException("Choose at least one review profile.");
             CopilotModelPolicy.Validate(selectedExecution, CopilotModelPolicy.Version, models);
             // Always prepare afresh for execution; a preview is an audit snapshot, not execution authority.
-            var input = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, cancellationToken, progress: new Progress<string>(message => ReviewProgress = message));
+            var input = await new GitReviewContext().PrepareAsync(Selected, forScope, selectedPaths, cancellationToken, progress: new Progress<string>(Report));
             Snapshot = input.Snapshot;
             preparedInput = input;
             OnPropertyChanged(nameof(ReviewInputReady));
             // Validate through the same production composer used by the preview and runner.
-            ReviewProgress = "Preparing prompt";
+            Report("Building review context");
             _ = PromptComposer.Compose(input, profileIds);
-            var progress = new Progress<string>(message => ReviewProgress = message);
-            var record = await copilot.RunAsync(input, profileIds, progress, cancellationToken, selectedExecution);
+            var progress = new Progress<string>(Report);
+            var record = await ReviewRunner(input, profileIds, progress, cancellationToken, selectedExecution);
             SetMetadata(metadata); // Surface locally persisted runtime suspension without another model call.
             ShowHistoryRecord(record);
+            Report("Saving review");
             await history.SaveAsync(record);
             await LoadHistoryAsync(record.ProjectId);
             ReviewProgress = record.Status switch
@@ -437,7 +580,7 @@ public sealed class DeskViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            Error = SafePreparationDiagnostic(ex);
+            Error = LatestReview == null ? SafePreparationDiagnostic(ex) : "The review result could not be saved. You can still view the result.";
             if (LatestReview == null)
                 await SavePreparationOutcomeAsync(ReviewStatus.Failed, SafePreparationDiagnostic(ex), forScope, selectedPaths);
             ReviewProgress = "Review failed.";
@@ -448,7 +591,9 @@ public sealed class DeskViewModel : ObservableObject
             reviewCancellation = null;
             OnPropertyChanged(nameof(IsReviewRunning));
             OnPropertyChanged(nameof(Interactive));
+            operation?.Complete(HasError ? "Failed" : LatestReview?.Status.ToString() ?? "Failed", HasError ? Error : LatestReview?.Diagnostic ?? ReviewProgress, LatestReview != null);
         }
+        void Report(string message) { ReviewProgress = message; operation?.Report(message); }
     }
 
     public bool IsReviewRunning => reviewCancellation != null;
@@ -456,11 +601,34 @@ public sealed class DeskViewModel : ObservableObject
 
     public async Task LoadHistoryAsync(Guid projectId)
     {
-        var records = await history.LoadAsync(projectId);
         if (Selected?.Id != projectId) return;
-        ReviewHistory.Clear();
-        foreach (var record in records) ReviewHistory.Add(new ReviewHistoryItem(record));
-        OnPropertyChanged(nameof(EmptyHistory));
+        var generation = ++historyGeneration;
+        historyLoading = true;
+        OnPropertyChanged(nameof(HistoryLoading));
+        OnPropertyChanged(nameof(HistoryStatus));
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            var records = await Task.Run(() => loadProjectHistory(projectId));
+            if (Selected?.Id != projectId || generation != historyGeneration) return;
+            ReviewHistory.Clear();
+            foreach (var record in records) ReviewHistory.Add(new ReviewHistoryItem(record));
+            StartupDiagnostics.Measure("review history loaded", timer);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (Selected?.Id == projectId && generation == historyGeneration) Error = "Review history could not be loaded.";
+        }
+        finally
+        {
+            if (Selected?.Id == projectId && generation == historyGeneration)
+            {
+                historyLoading = false;
+                OnPropertyChanged(nameof(HistoryLoading));
+                OnPropertyChanged(nameof(HistoryStatus));
+                OnPropertyChanged(nameof(EmptyHistory));
+            }
+        }
     }
 
     public static string SafePreparationDiagnostic(Exception error) => error switch
@@ -557,26 +725,36 @@ public sealed class DeskViewModel : ObservableObject
 
     public async Task RefreshAccountAsync()
     {
-        SetAccount(await copilot.GetAccountAsync());
-        SetMetadata(await copilot.GetMetadataAsync());
+        var generation = Interlocked.Increment(ref accountHydrationGeneration);
+        var account = await copilot.GetAccountAsync();
+        var result = await copilot.GetMetadataAsync();
+        if (generation == Volatile.Read(ref accountHydrationGeneration))
+        {
+            SetAccount(account);
+            SetMetadata(result);
+        }
     }
     public async Task SignInAsync()
     {
+        var generation = Interlocked.Increment(ref accountHydrationGeneration);
         try
         {
             await copilot.SignInAsync();
-            SetAccount((await copilot.GetAccountAsync()) with { SignInCompleted = true });
+            var account = (await copilot.GetAccountAsync()) with { SignInCompleted = true };
+            if (generation == Volatile.Read(ref accountHydrationGeneration)) SetAccount(account);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
     }
     public async Task SignOutAsync()
     {
+        Interlocked.Increment(ref accountHydrationGeneration);
         try { await copilot.SignOutAsync(); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Error = ex.Message; }
         await RefreshAccountAsync();
     }
     public async Task SwitchAccountAsync()
     {
+        Interlocked.Increment(ref accountHydrationGeneration);
         try
         {
             await copilot.SignOutAsync();
@@ -599,9 +777,41 @@ public sealed class DeskViewModel : ObservableObject
 
     private async Task PersistAsync(AppState updated)
     {
-        await store.SaveAsync(updated);
-        state = updated;
-        OnPropertyChanged(nameof(State));
+        await PersistAsync(_ => updated);
+    }
+
+    private async Task PersistAsync(Func<AppState, AppState> update)
+    {
+        await selectionPersistLock.WaitAsync();
+        try
+        {
+            var updated = update(state);
+            await store.SaveAsync(updated);
+            state = updated;
+            OnPropertyChanged(nameof(State));
+        }
+        finally
+        {
+            selectionPersistLock.Release();
+        }
+    }
+
+    private async Task<bool> PersistSelectionAsync(Guid projectId, int intent)
+    {
+        await selectionPersistLock.WaitAsync();
+        try
+        {
+            if (intent != Volatile.Read(ref selectionIntentGeneration)) return false;
+            var updated = state with { SelectedProjectId = projectId };
+            await store.SaveAsync(updated);
+            state = updated;
+            OnPropertyChanged(nameof(State));
+            return intent == Volatile.Read(ref selectionIntentGeneration);
+        }
+        finally
+        {
+            selectionPersistLock.Release();
+        }
     }
 }
 

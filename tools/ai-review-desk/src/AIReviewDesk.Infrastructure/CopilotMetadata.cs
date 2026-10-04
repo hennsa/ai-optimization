@@ -93,10 +93,62 @@ public static class CopilotMetadataParser
             if (efforts.Length > 16 || efforts.Any(e => e.Length is < 1 or > 32 || e.StartsWith('-') || e.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)))) throw new InvalidOperationException("Invalid efforts metadata.");
             var name = entry.TryGetProperty("name", out var display) && display.ValueKind == JsonValueKind.String ? display.GetString()! : CopilotModelPolicy.DisplayName(id);
             if (name.Length > 128) throw new InvalidOperationException("Invalid model display name.");
-            models.Add(new(id, name, ["auto", .. efforts.Where(e => e != "auto")]));
+            models.Add(new(id, name, ["auto", .. efforts.Where(e => e != "auto")], Billing(entry)));
         }
         return models;
     }
+
+    private static CopilotModelBilling? Billing(JsonElement model)
+    {
+        if (!model.TryGetProperty("billing", out var billing)) return null;
+        if (billing.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("Invalid model billing metadata.");
+        var multiplier = OptionalRate(billing, "multiplier", 1_000_000m);
+        CopilotTokenPrices? prices = null;
+        if (billing.TryGetProperty("tokenPrices", out var value))
+        {
+            if (value.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("Invalid model token prices.");
+            var input = OptionalRate(value, "inputPrice", 1_000_000_000m);
+            var output = OptionalRate(value, "outputPrice", 1_000_000_000m);
+            var cacheRead = OptionalRate(value, "cacheReadPrice", 1_000_000_000m);
+            var cacheWrite = OptionalRate(value, "cacheWritePrice", 1_000_000_000m);
+            var cacheWrite1h = OptionalRate(value, "cacheWrite1hPrice", 1_000_000_000m);
+            var batchSize = OptionalBatchSize(value);
+            CopilotLongContextPrices? longContext = null;
+            if (value.TryGetProperty("longContext", out var extended))
+            {
+                if (extended.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("Invalid long-context token prices.");
+                var extendedPrices = new CopilotLongContextPrices(
+                    OptionalRate(extended, "inputPrice", 1_000_000_000m), OptionalRate(extended, "outputPrice", 1_000_000_000m),
+                    OptionalRate(extended, "cacheReadPrice", 1_000_000_000m), OptionalRate(extended, "cacheWritePrice", 1_000_000_000m),
+                    OptionalRate(extended, "cacheWrite1hPrice", 1_000_000_000m));
+                if (HasRates(extendedPrices)) longContext = extendedPrices;
+            }
+            var candidate = new CopilotTokenPrices(input, output, cacheRead, cacheWrite, cacheWrite1h, batchSize, longContext);
+            if (input != null || output != null || cacheRead != null || cacheWrite != null || cacheWrite1h != null || batchSize != null || longContext != null)
+                prices = candidate;
+        }
+        return multiplier == null && prices == null ? null : new(multiplier, prices);
+    }
+
+    private static bool HasRates(CopilotLongContextPrices prices) => prices.InputPrice != null || prices.OutputPrice != null ||
+        prices.CacheReadPrice != null || prices.CacheWritePrice != null || prices.CacheWrite1hPrice != null;
+
+    private static decimal? OptionalRate(JsonElement parent, string name, decimal maximum)
+    {
+        if (!parent.TryGetProperty(name, out var value)) return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetDecimal(out var number) || number < 0 || number > maximum)
+            throw new InvalidOperationException("Invalid model billing number.");
+        return number;
+    }
+
+    private static long? OptionalBatchSize(JsonElement parent)
+    {
+        if (!parent.TryGetProperty("batchSize", out var value)) return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out var number) || number is < 1 or > 1_000_000_000_000)
+            throw new InvalidOperationException("Invalid model billing batch size.");
+        return number;
+    }
+
     public static CopilotQuota? Quota(JsonElement result, DateTimeOffset fetchedAt)
     {
         if (!result.GetProperty("quotaSnapshots").TryGetProperty("premium_interactions", out var quota) ||
